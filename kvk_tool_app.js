@@ -60,6 +60,22 @@ function normalize(val, min, max) {
     return (val - min) / (max - min);
 }
 
+/**
+ * NEW: Debounce utility to prevent rapid-firing of resize events
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+
 // --- Data Parsing & Processing ---
 
 function parseCSV(data) {
@@ -269,29 +285,28 @@ function renderFighterCards() {
  * Renders the D3 scatter chart.
  */
 function renderScatterChart() {
-    // Check if chart is already rendered
     const canvas = d3.select("#scatter-chart").node();
-    if (canvas._chartRendered) {
-        return;
-    }
+    const container = d3.select(".chart-container").node();
 
-    const chartData = playerData.filter(p => p.numeric_kvk_kp > 0 || p.numeric_deads > 0);
-    
-    const container = d3.select("#content-chart .chart-container");
-    
-    const { width, height } = canvas.getBoundingClientRect();
+    // Clear previous canvas content if any
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Get size from container, which is now responsive
+    const { width, height } = container.getBoundingClientRect();
     if (width === 0 || height === 0) {
         console.error("Chart container has no size. Cannot render.");
         return; // Don't render if container isn't visible
     }
     
-    canvas.width = width * 2; // High-DPI rendering
+    // Set canvas dimensions for High-DPI
+    canvas.width = width * 2; 
     canvas.height = height * 2;
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
-    
-    const ctx = canvas.getContext("2d");
     ctx.scale(2, 2); // Scale context for High-DPI
+
+    const chartData = playerData.filter(p => p.numeric_kvk_kp > 0 || p.numeric_deads > 0);
 
     const margin = { top: 20, right: 20, bottom: 50, left: 60 };
     const innerWidth = width - margin.left - margin.right;
@@ -320,7 +335,6 @@ function renderScatterChart() {
     const radius = 5;
 
     // --- Draw Chart ---
-    ctx.clearRect(0, 0, width, height);
     ctx.save();
     ctx.translate(margin.left, margin.top);
     
@@ -752,6 +766,16 @@ async function checkRemoteData(cachedData) {
     }
 }
 
+// --- NEW: Resize Handling ---
+function handleResize() {
+    // Check if the chart tab is active
+    if (tabs.chart.content.classList.contains('active')) {
+        const canvas = d3.select("#scatter-chart").node();
+        canvas._chartRendered = false; // Mark for redraw
+        renderScatterChart();
+    }
+}
+
 // --- App Entry Point ---
 
 forceRefreshBtn.addEventListener('click', () => {
@@ -764,4 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activateTab('snapshot'); // Start on snapshot tab
     setupSearch();
     fetchData();
+
+    // NEW: Add the debounced resize listener
+    window.addEventListener('resize', debounce(handleResize, 250));
 });
