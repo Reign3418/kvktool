@@ -81,10 +81,28 @@
 
         <!-- Chart Tab -->
         <div id="content-chart" class="tab-content">
-            <!-- REMOVED the inline style -->
+            <!-- NEW: Chart Legend -->
+            <div class="flex flex-wrap justify-center gap-4 mb-4">
+                <div class="flex items-center">
+                    <span class="w-4 h-4 rounded-full bg-blue-500 mr-2"></span>
+                    <span><b>Heroes</b> (High Kills, Low Deads)</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span>
+                    <span><b>Warriors</b> (High Kills, High Deads)</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span>
+                    <span><b>Feeders</b> (Low Kills, High Deads)</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="w-4 h-4 rounded-full bg-gray-500 mr-2"></span>
+                    <span><b>Slackers</b> (Low Kills, Low Deads)</span>
+                </div>
+            </div>
             <div class="chart-container">
                 <canvas id="scatter-chart"></canvas>
-                <!-- TOOLTIP MOVED INSIDE -->
+                <!-- RE-ADD TOOLTIP -->
                 <div id="chart-tooltip" class="hidden absolute p-2 bg-gray-800 text-white rounded-lg shadow-lg text-sm"></div>
             </div>
         </div>
