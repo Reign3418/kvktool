@@ -1,0 +1,165 @@
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f1f5f9; /* slate-100 */
+}
+.player-card {
+    background-color: white;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    text-align: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-bottom-width: 4px;
+    border-color: #64748b; /* slate-500 */
+    transition: all 0.3s ease;
+    position: relative; /* For checkbox positioning */
+}
+.player-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.player-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b; /* slate-800 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.player-id {
+    font-size: 0.75rem;
+    color: #64748b; /* slate-500 */
+    margin-bottom: 0.5rem;
+}
+.player-stat {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #475569; /* slate-600 */
+}
+.stat-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #64748b; /* slate-500 */
+    text-transform: uppercase;
+}
+.compare-checkbox {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    accent-color: #1e3a8a; /* blue-900 */
+}
+
+.tab-btn {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    border-radius: 0.5rem 0.5rem 0 0;
+    background-color: #e2e8f0; /* slate-200 */
+    color: #475569; /* slate-600 */
+    transition: all 0.3s ease;
+    border: 1px solid #e2e8f0;
+    border-bottom: none;
+    margin-bottom: -1px;
+    cursor: pointer;
+}
+.tab-btn.active {
+    background-color: white;
+    color: #1e3a8a; /* blue-900 */
+    border-color: #cbd5e1; /* slate-300 */
+    border-bottom: 1px solid white;
+}
+.tab-content {
+    display: none;
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 0 0.5rem 0.5rem 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid #cbd5e1; /* slate-300 */
+}
+.tab-content.active {
+    display: block;
+}
+
+/* Comparison Table */
+.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: right;
+}
+.compare-table th, .compare-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0; /* slate-200 */
+}
+.compare-table th {
+    text-align: left;
+    background-color: #f8fafc; /* slate-50 */
+    color: #1e3a8a; /* blue-900 */
+    font-weight: 700;
+}
+.compare-table th:not(:first-child) {
+    text-align: right;
+    font-size: 1.125rem;
+}
+.compare-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: #334155; /* slate-700 */
+}
+.stat-winner {
+    font-weight: 700;
+    color: #16a34a; /* green-600 */
+}
+.stat-loser {
+    font-weight: 700;
+    color: #dc2626; /* red-600 */
+}
+
+/* Snapshot Table */
+.snapshot-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.snapshot-table th, .snapshot-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0; /* slate-200 */
+    text-align: right;
+}
+.snapshot-table th {
+    background-color: #f8fafc; /* slate-50 */
+    font-weight: 600;
+    color: #475569; /* slate-600 */
+    cursor: pointer;
+    user-select: none;
+}
+.snapshot-table th:hover {
+    background-color: #f1f5f9; /* slate-100 */
+}
+.snapshot-table th:first-child, .snapshot-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+    min-width: 150px;
+}
+.snapshot-table td:first-child {
+    font-weight: 600;
+    color: #334155; /* slate-700 */
+}
+.snapshot-table .compare-checkbox-cell {
+    width: 40px;
+    text-align: center;
+}
+.snapshot-table .compare-checkbox {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+/* Heatmap Colors (Fixed the selector bug) */
+[data-heatmap-color="red"] { background-color: rgba(220, 38, 38, var(--heatmap-opacity, 0.1)); }
+[data-heatmap-color="green"] { background-color: rgba(22, 163, 74, var(--heatmap-opacity, 0.1)); }
+[data-heatmap-color="blue"] { background-color: rgba(59, 130, 246, var(--heatmap-opacity, 0.1)); }
+
+/* Chart Tooltip */
+#chart-tooltip {
+    pointer-events: none;
+    transition: all 0.1s ease;
+}

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KvK S3 - Player Data Tool</title>
+    <!-- External Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Link to our new CSS file -->
+    <link rel="stylesheet" href="kvk_tool_styles.css">
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- Header -->
+        <header class="text-center mb-6">
+            <h1 class="text-4xl sm:text-5xl font-black uppercase text-gray-800 tracking-wide">KVK S3 - PLAYER DATA TOOL</h1>
+        </header>
+
+        <!-- Data Status -->
+        <div class="bg-white p-4 rounded-lg shadow-lg mb-8 text-center">
+            <h2 class="text-xl font-bold text-gray-800">Data Feed</h2>
+            <p id="load-status" class="text-gray-600 mt-2">Initializing...</p>
+            <button id="force-refresh" class="mt-2 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                Force Refresh Data
+            </button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex flex-wrap border-b border-gray-300">
+            <button id="btn-snapshot" class="tab-btn">Snapshot</button>
+            <button id="btn-player-cards" class="tab-btn">Player Cards</button>
+            <button id="btn-fighters" class="tab-btn">Fighters</button>
+            <button id="btn-compare" class="tab-btn">Compare (0)</button>
+            <button id="btn-chart" class="tab-btn">Chart</button>
+        </div>
+
+        <!-- Snapshot Tab -->
+        <div id="content-snapshot" class="tab-content active">
+            <div class="mb-6">
+                <input type="text" id="search-bar-snapshot" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search by Governor Name or ID..." disabled>
+            </div>
+            <div id="snapshot-table-wrapper" class="overflow-x-auto">
+                <p class="text-gray-500 col-span-full text-center p-8">Loading data...</p>
+            </div>
+        </div>
+
+        <!-- Player Cards Tab -->
+        <div id="content-player-cards" class="tab-content">
+            <div class="mb-6">
+                <input type="text" id="search-bar-player-cards" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search by Governor Name or ID..." disabled>
+            </div>
+            <div id="player-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <p class="text-gray-500 col-span-full text-center p-8">Load data to see player cards.</p>
+            </div>
+        </div>
+
+        <!-- Fighters Tab -->
+        <div id="content-fighters" class="tab-content">
+            <div class="mb-6">
+                <input type="text" id="search-bar-fighters" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search fighters..." disabled>
+            </div>
+            <div id="fighter-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <p class="text-gray-500 col-span-full text-center p-8">No fighters found. (Min 20M Power & >0 KvK KP)</p>
+            </div>
+        </div>
+
+        <!-- Compare Tab -->
+        <div id="content-compare" class="tab-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Side-by-Side Comparison</h2>
+                <button id="clear-selection-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Clear Selection</button>
+            </div>
+            <div id="compare-table-wrapper" class="overflow-x-auto">
+                <p class="text-gray-500 text-center p-8">Select up to 3 players to compare them here.</p>
+            </div>
+        </div>
+
+        <!-- Chart Tab -->
+        <div id="content-chart" class="tab-content">
+            <div class="chart-container" style="position: relative; width: 100%; height: 600px; background: #fff; border: 1px solid #ccc; border-radius: 8px;">
+                <canvas id="scatter-chart"></canvas>
+                <!-- TOOLTIP MOVED INSIDE -->
+                <div id="chart-tooltip" class="hidden absolute p-2 bg-gray-800 text-white rounded-lg shadow-lg text-sm" style="pointer-events: none; transition: all 0.1s ease;"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Link to our new JS file. 'defer' tells the browser to wait until the page is loaded -->
+    <script src="kvk_tool_app.js" defer></script>
+</body>
+</html>
