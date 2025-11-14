@@ -61,7 +61,7 @@ function normalize(val, min, max) {
 }
 
 /**
- * NEW: Debounce utility to prevent rapid-firing of resize events
+ * Debounce utility to prevent rapid-firing of resize events
  */
 function debounce(func, wait) {
     let timeout;
@@ -113,7 +113,6 @@ function renderAllTabs() {
     renderSnapshotTable();
     renderPlayerCards();
     renderFighterCards();
-    // renderScatterChart(); // MOVED to activateTab
 }
 
 /**
@@ -137,7 +136,7 @@ function renderSnapshotTable() {
     sortData(playerData);
     
     // 3. Generate Table HTML
-    // NEW: Using DOM manipulation instead of innerHTML
+    // Using DOM manipulation instead of innerHTML
     snapshotTableWrapper.innerHTML = ''; // Clear wrapper
     const table = document.createElement('table');
     table.className = 'snapshot-table';
@@ -327,6 +326,28 @@ function renderFighterCards() {
     fighterGrid.appendChild(fragment); // Append all cards at once
 }
 
+// --- NEW/UPDATED CHART FUNCTIONS ---
+
+/**
+ * Gets the quadrant for a player.
+ */
+function getQuadrant(player, averages) {
+    const kills = player.numeric_t4t5;
+    const deads = player.numeric_deads;
+
+    if (kills >= averages.kills && deads <= averages.deads) {
+        return { name: 'Hero', color: '#3b82f6' }; // Blue
+    }
+    if (kills >= averages.kills && deads > averages.deads) {
+        return { name: 'Warrior', color: '#22c55e' }; // Green
+    }
+    if (kills < averages.kills && deads > averages.deads) {
+        return { name: 'Feeder', color: '#ef4444' }; // Red
+    }
+    // Default to Slacker
+    return { name: 'Slacker', color: '#6b7280' }; // Gray
+}
+
 /**
  * Renders the D3 scatter chart.
  */
@@ -334,16 +355,12 @@ function renderScatterChart() {
     const canvas = d3.select("#scatter-chart").node();
     const container = d3.select(".chart-container").node();
 
-    // Clear previous canvas content if any
+    // Clear previous canvas content
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Get size from container, which is now responsive
     const { width, height } = container.getBoundingClientRect();
-    if (width === 0 || height === 0) {
-        console.error("Chart container has no size. Cannot render.");
-        return; // Don't render if container isn't visible
-    }
+    if (width === 0 || height === 0) return; // Don't render if not visible
     
     // Set canvas dimensions for High-DPI
     canvas.width = width * 2; 
@@ -352,31 +369,46 @@ function renderScatterChart() {
     canvas.style.height = `${height}px`;
     ctx.scale(2, 2); // Scale context for High-DPI
 
-    const chartData = playerData.filter(p => p.numeric_kvk_kp > 0 || p.numeric_deads > 0);
+    // Filter out players with no fighting
+    const chartData = playerData.filter(p => p.numeric_t4t5 > 0 || p.numeric_deads > 0);
+    if (chartData.length === 0) return; // No data to plot
 
-    const margin = { top: 20, right: 20, bottom: 50, left: 60 };
+    const margin = { top: 30, right: 30, bottom: 50, left: 60 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    // Data for chart
-    const plotData = chartData.map(d => ({
-        x: d.numeric_kvk_kp,
-        y: d.numeric_deads,
-        dkpPercent: d.numeric_dkp_percent,
-        name: d['Governor Name']
-    }));
+    // --- Calculate Averages for Quadrants ---
+    const totalKills = d3.sum(chartData, d => d.numeric_t4t5);
+    const totalDeads = d3.sum(chartData, d => d.numeric_deads);
+    const avgKills = totalKills / chartData.length;
+    const avgDeads = totalDeads / chartData.length;
+    const averages = { kills: avgKills, deads: avgDeads };
 
-    // Scales
+    // --- Create Plot Data ---
+    const plotData = chartData.map(d => {
+        const quadrant = getQuadrant(d, averages);
+        return {
+            x: d.numeric_t4t5,
+            y: d.numeric_deads,
+            name: d['Governor Name'],
+            dkpPercent: d.numeric_dkp_percent,
+            quadrant: quadrant.name,
+            color: quadrant.color
+        };
+    });
+
+    // --- Scales (FIX FOR BUNCHING) ---
+    // Use 95th percentile for max to cut off outliers
+    const xMax = d3.quantile(plotData.map(d => d.x).sort(d3.ascending), 0.95) * 1.05 || 1;
+    const yMax = d3.quantile(plotData.map(d => d.y).sort(d3.ascending), 0.95) * 1.05 || 1;
+
     const x = d3.scaleLinear()
-        .domain([0, d3.max(plotData, d => d.x) * 1.05])
+        .domain([0, xMax])
         .range([0, innerWidth]);
 
     const y = d3.scaleLinear()
-        .domain([0, d3.max(plotData, d => d.y) * 1.05])
+        .domain([0, yMax])
         .range([innerHeight, 0]);
-
-    const color = d3.scaleSequential(d3.interpolateRdBu)
-        .domain([d3.max(plotData, d => d.dkpPercent), 0]); // Red (0) to Blue (Max)
     
     const radius = 5;
 
@@ -384,21 +416,54 @@ function renderScatterChart() {
     ctx.save();
     ctx.translate(margin.left, margin.top);
     
-    // Draw Points
+    // --- Draw Quadrant Lines & Labels ---
+    const avgX = x(avgKills);
+    const avgY = y(avgDeads);
+    
+    ctx.beginPath();
+    ctx.strokeStyle = '#aaa';
+    ctx.setLineDash([5, 5]);
+    // Vertical Line
+    ctx.moveTo(avgX, 0);
+    ctx.lineTo(avgX, innerHeight);
+    // Horizontal Line
+    ctx.moveTo(0, avgY);
+    ctx.lineTo(innerWidth, avgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Quadrant Labels
+    ctx.font = "bold 14px Inter";
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = "#3b82f6"; // Blue
+    ctx.fillText("Heroes", avgX + 10, avgY + 20);
+    ctx.fillStyle = "#22c55e"; // Green
+    ctx.fillText("Warriors", avgX + 10, avgY - 10);
+    ctx.fillStyle = "#ef4444"; // Red
+    ctx.fillText("Feeders", avgX - 10, avgY - 10);
+    ctx.textAlign = "end";
+    ctx.fillStyle = "#6b7280"; // Gray
+    ctx.fillText("Slackers", avgX - 10, avgY + 20);
+    ctx.globalAlpha = 1.0;
+    ctx.textAlign = "start"; // Reset
+
+    // --- Draw Points ---
     plotData.forEach(d => {
         ctx.beginPath();
-        ctx.arc(x(d.x), y(d.y), radius, 0, 2 * Math.PI, false);
-        ctx.fillStyle = color(d.dkpPercent);
+        // Cap points at the max scale
+        const plotX = x(Math.min(d.x, xMax));
+        const plotY = y(Math.min(d.y, yMax));
+        ctx.arc(plotX, plotY, radius, 0, 2 * Math.PI, false);
+        ctx.fillStyle = d.color;
         ctx.globalAlpha = 0.7;
         ctx.fill();
-        ctx.globalAlpha = 1.0;
     });
+    ctx.globalAlpha = 1.0;
     
-    // Draw Axes
+    // --- Draw Axes ---
     const xAxis = d3.axisBottom(x).ticks(5).tickFormat(d3.format("~s"));
     const yAxis = d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s"));
 
-    // Custom axis drawing on canvas
     drawAxis(ctx, xAxis, 0, innerHeight, innerWidth, innerHeight);
     drawAxis(ctx, yAxis, 0, 0, 0, innerHeight);
 
@@ -406,13 +471,13 @@ function renderScatterChart() {
     ctx.fillStyle = "#000";
     ctx.font = "14px Inter";
     ctx.textAlign = "center";
-    ctx.fillText("KvK Kill Points", innerWidth / 2, innerHeight + margin.bottom - 10);
+    ctx.fillText("T4 + T5 Kills", innerWidth / 2, innerHeight + margin.bottom - 10);
     
     ctx.save();
     ctx.translate(-margin.left + 20, innerHeight / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = "center";
-    ctx.fillText("KvK Deads", 0, 0);
+    ctx.fillText("Kvk Deads", 0, 0);
     ctx.restore();
     
     ctx.restore();
@@ -455,7 +520,7 @@ function drawAxis(ctx, axis, x, y, width, height) {
 }
 
 /**
- * Sets up hover/tooltip for the chart
+ * RE-IMPLEMENTED: Sets up hover/tooltip for the chart
  */
 function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
     const tooltip = document.getElementById('chart-tooltip');
@@ -484,11 +549,12 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
             canvas.style.cursor = 'pointer';
             tooltip.innerHTML = `
                 <strong>${target.name}</strong><br>
-                KvK KP: ${formatShort(target.x)}<br>
+                <span style="color: ${target.color}; font-weight: 700;">(${target.quadrant})</span><br>
+                T4/T5 Kills: ${formatShort(target.x)}<br>
                 Deads: ${formatNumber(target.y)}<br>
                 DKP %: ${target.dkpPercent}%
             `;
-            tooltip.classList.remove('hidden');
+            tooltip.classList.add('show');
             
             // Position 10px to the right and 10px below the cursor *relative to the canvas*
             let tooltipX = x + 10;
@@ -509,13 +575,13 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
             
         } else {
             canvas.style.cursor = 'default';
-            tooltip.classList.add('hidden');
+            tooltip.classList.remove('show');
         }
     });
 
     canvas.addEventListener('mouseleave', () => {
         canvas.style.cursor = 'default';
-        tooltip.classList.add('hidden');
+        tooltip.classList.remove('show');
     });
 }
 
@@ -669,7 +735,7 @@ function renderComparison() {
         ['DKP % Complete', true]
     ];
 
-    // NEW: Using DOM manipulation for the compare table
+    // Using DOM manipulation for the compare table
     compareWrapper.innerHTML = ''; // Clear wrapper
     const table = document.createElement('table');
     table.className = 'compare-table';
@@ -825,7 +891,7 @@ async function checkRemoteData(cachedData) {
     }
 }
 
-// --- NEW: Resize Handling ---
+// --- Resize Handling ---
 function handleResize() {
     // Check if the chart tab is active
     if (tabs.chart.content.classList.contains('active')) {
@@ -848,6 +914,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSearch();
     fetchData();
 
-    // NEW: Add the debounced resize listener
+    // Add the debounced resize listener
     window.addEventListener('resize', debounce(handleResize, 250));
 });
