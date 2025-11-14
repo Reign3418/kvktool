@@ -163,3 +163,20 @@ body {
     pointer-events: none;
     transition: all 0.1s ease;
 }
+
+/* NEW: Responsive Chart Container */
+.chart-container {
+    position: relative;
+    width: 100%;
+    /* 70% of the viewport height, with a max of 600px and min of 400px */
+    height: 70vh; 
+    max-height: 600px;
+    min-height: 400px; 
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+}
+#scatter-chart {
+    width: 100%;
+    height: 100%;
+}
