@@ -153,7 +153,7 @@ body {
     height: 1.25rem;
 }
 
-/* Heatmap Colors (Fixed the selector bug) */
+/* Heatmap Colors */
 [data-heatmap-color="red"] { background-color: rgba(220, 38, 38, var(--heatmap-opacity, 0.1)); }
 [data-heatmap-color="green"] { background-color: rgba(22, 163, 74, var(--heatmap-opacity, 0.1)); }
 [data-heatmap-color="blue"] { background-color: rgba(59, 130, 246, var(--heatmap-opacity, 0.1)); }
@@ -161,10 +161,14 @@ body {
 /* Chart Tooltip */
 #chart-tooltip {
     pointer-events: none;
-    transition: all 0.1s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    opacity: 0;
+}
+#chart-tooltip.show {
+    opacity: 1;
 }
 
-/* NEW: Responsive Chart Container */
+/* Responsive Chart Container */
 .chart-container {
     position: relative;
     width: 100%;
