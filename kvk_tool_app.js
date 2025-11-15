@@ -25,7 +25,8 @@ const tabs = {
     playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
     fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
     compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
-    chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') }
+    chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
+    kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') } // NEW
 };
 
 const searchBars = {
@@ -49,6 +50,13 @@ const snapshotTableWrapper = document.getElementById('snapshot-table-wrapper');
 const compareBtn = document.getElementById('btn-compare');
 const clearBtn = document.getElementById('clear-selection-btn');
 const compareWrapper = document.getElementById('compare-table-wrapper');
+
+// NEW: Kingdom Compare DOM Refs
+const kdProfileSelectA = document.getElementById('kd-profile-select-a');
+const kdProfileSelectB = document.getElementById('kd-profile-select-b');
+const runKdCompareBtn = document.getElementById('run-kd-compare-btn');
+const kdCompareResult = document.getElementById('kd-compare-result');
+
 
 // --- Utility Functions ---
 
@@ -87,11 +95,6 @@ function debounce(func, wait) {
 
 // --- Data Parsing & File Reading ---
 
-/**
- * Reads an uploaded file as text.
- * @param {File} file - The file from the <input> element.
- * @returns {Promise<string>} A promise that resolves with the file content.
- */
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         if (!file) {
@@ -133,21 +136,32 @@ function saveProfilesToStorage() {
 
 function updateProfileDropdown() {
     profileSelect.innerHTML = ''; // Clear existing options
+    kdProfileSelectA.innerHTML = ''; // NEW
+    kdProfileSelectB.innerHTML = ''; // NEW
+    
     const profileNames = Object.keys(dkpProfiles);
 
     if (profileNames.length === 0) {
-        profileSelect.innerHTML = '<option value="">-- No profiles found --</option>';
+        const defaultOption = '<option value="">-- No profiles found --</option>';
+        profileSelect.innerHTML = defaultOption;
+        kdProfileSelectA.innerHTML = defaultOption;
+        kdProfileSelectB.innerHTML = defaultOption;
         return;
     }
 
-    // Add a blank option first
-    profileSelect.innerHTML = '<option value="">-- Select a profile --</option>';
+    const blankOption = '<option value="">-- Select a profile --</option>';
+    profileSelect.innerHTML = blankOption;
+    kdProfileSelectA.innerHTML = blankOption;
+    kdProfileSelectB.innerHTML = blankOption;
 
     profileNames.forEach(name => {
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
-        profileSelect.appendChild(option);
+        
+        profileSelect.appendChild(option.cloneNode(true));
+        kdProfileSelectA.appendChild(option.cloneNode(true));
+        kdProfileSelectB.appendChild(option.cloneNode(true));
     });
 }
 
@@ -197,7 +211,6 @@ function handleDeleteProfile() {
         updateProfileDropdown();
         loadStatus.textContent = `Deleted profile: ${profileName}`;
         
-        // If the deleted profile was the one loaded, clear the app
         if (currentProfileName === profileName) {
             clearAllData();
         }
@@ -214,7 +227,7 @@ function clearAllData() {
         bar.disabled = true;
         bar.value = "";
     });
-    renderAllTabs(); // This will show the "Run DKP" messages
+    renderAllTabs();
     renderScatterChart();
     loadStatus.textContent = "Please create a new DKP profile or load an existing one.";
     activateTab('manageData');
@@ -222,9 +235,6 @@ function clearAllData() {
 
 // --- DKP Calculation ---
 
-/**
- * NEW: This is the main function triggered by the "Save & Run" button
- */
 async function runDkpCalculation() {
     loadStatus.textContent = "Calculating...";
     
@@ -237,20 +247,16 @@ async function runDkpCalculation() {
     const startFile = startScanInput.files[0];
     const endFile = endScanInput.files[0];
 
-    // Check if we are re-saving a profile. If so, file uploads are optional.
     if (!startFile || !endFile) {
         if (dkpProfiles[profileName]) {
-            // This is a re-save, just update settings
             loadStatus.textContent = "Re-calculating with new settings...";
         } else {
-            // This is a new profile and files are missing
             loadStatus.textContent = "Error: Please select both a Start Scan and End Scan file.";
             return;
         }
     }
 
     try {
-        // 1. Get new settings from inputs
         const currentSettings = {
             t4Mult: parseFloat(settingsInputs.t4Mult.value) || 0,
             t5Mult: parseFloat(settingsInputs.t5Mult.value) || 0,
@@ -258,52 +264,44 @@ async function runDkpCalculation() {
             targetPercent: parseFloat(settingsInputs.targetPercent.value) || 0,
         };
         
-        // 2. Get scan data
         let startScanData, endScanData;
         
         if (startFile && endFile) {
-            // New files were uploaded
             const startScanText = await readFileAsText(startFile);
             const endScanText = await readFileAsText(endFile);
             startScanData = parseCSV(startScanText);
             endScanData = parseCSV(endScanText);
             
-            // Save the raw text to the profile for re-calculation
             dkpProfiles[profileName] = {
-                ...dkpProfiles[profileName], // Keep any old data
+                ...dkpProfiles[profileName],
                 startScanRaw: startScanText,
                 endScanRaw: endScanText,
             };
 
         } else if (dkpProfiles[profileName]) {
-            // No new files, re-calculate from saved raw data
             startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
             endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
         } else {
             throw new Error("No scan data found to calculate.");
         }
         
-        // 3. Create a fast lookup map for the "End Scan" data
         const endScanMap = new Map();
         endScanData.forEach(player => {
             endScanMap.set(player['Governor ID'], player);
         });
         
-        // 4. Calculate all player data
         calculateAllPlayerData(startScanData, endScanMap, currentSettings);
         
-        // 5. Save the *results* and *settings* to the profile
         dkpProfiles[profileName] = {
-            ...dkpProfiles[profileName], // Keep raw scan data
+            ...dkpProfiles[profileName],
             calculatedData: calculatedPlayerData,
             dkpSettings: currentSettings
         };
         saveProfilesToStorage();
         
-        // 6. Update UI
         currentProfileName = profileName;
         updateProfileDropdown();
-        profileSelect.value = profileName; // Select the new profile
+        profileSelect.value = profileName;
         
         processFighterData();
         renderAllTabs();
@@ -311,7 +309,7 @@ async function runDkpCalculation() {
         Object.values(searchBars).forEach(bar => bar.disabled = false);
 
         loadStatus.textContent = `Successfully saved and calculated DKP for ${profileName}.`;
-        activateTab('snapshot'); // Show the results!
+        activateTab('snapshot');
 
     } catch (err) {
         console.error("Error during DKP calculation:", err);
@@ -319,22 +317,16 @@ async function runDkpCalculation() {
     }
 }
 
-
-/**
- * NEW: This function calculates all DKP stats based on the two scans
- */
 function calculateAllPlayerData(startData, endMap, settings) {
     calculatedPlayerData = startData.map(startPlayer => {
         const govId = startPlayer['Governor ID'];
         const endPlayer = endMap.get(govId);
 
-        // --- Calculate Stats from Before/After ---
         const startPower = cleanNumber(startPlayer['Power']);
         let endPower = 0;
         let endTroopPower = 0;
         let endT1 = 0, endT2 = 0, endT3 = 0, endT4 = 0, endT5 = 0, endDeads = 0;
 
-        // If player isn't in the end scan, they get 0 for all end stats
         if (endPlayer) {
             endPower = cleanNumber(endPlayer['Power']);
             endTroopPower = cleanNumber(endPlayer['Troop Power']);
@@ -354,7 +346,6 @@ function calculateAllPlayerData(startData, endMap, settings) {
         const startT5 = cleanNumber(startPlayer['T5 Kills']);
         const startDeads = cleanNumber(startPlayer['Deads']);
         
-        // These are the KvK-only stats
         const numeric_t1 = Math.max(0, endT1 - startT1);
         const numeric_t2 = Math.max(0, endT2 - startT2);
         const numeric_t3 = Math.max(0, endT3 - startT3);
@@ -365,13 +356,10 @@ function calculateAllPlayerData(startData, endMap, settings) {
         const numeric_troop_power_plus = endTroopPower - startTroopPower;
         const numeric_t4t5 = numeric_t4 + numeric_t5;
 
-        // --- Calculate DKP Stats from Settings ---
         const { t4Mult, t5Mult, deadsMult, targetPercent } = settings;
         
         const numeric_kvk_kp = (numeric_t4 * t4Mult) + (numeric_t5 * t5Mult);
-        
         const numeric_kvk_dkp = (numeric_deads * deadsMult) + numeric_kvk_kp;
-        
         const numeric_target_dkp = startPower * (targetPercent / 100);
         
         let numeric_dkp_percent = 0;
@@ -379,7 +367,6 @@ function calculateAllPlayerData(startData, endMap, settings) {
             numeric_dkp_percent = (numeric_kvk_dkp / numeric_target_dkp) * 100;
         }
         
-        // Return a new object matching the structure our tabs expect
         return {
             'Governor ID': govId,
             'Governor Name': startPlayer['Governor Name'],
@@ -398,7 +385,6 @@ function calculateAllPlayerData(startData, endMap, settings) {
             'Target DKP': numeric_target_dkp,
             'DKP % Complete': numeric_dkp_percent.toFixed(0),
             
-            // Keep pre-calculated numerics for sorting
             numeric_kvk_kp: numeric_kvk_kp,
             numeric_deads: numeric_deads,
             numeric_dkp_percent: numeric_dkp_percent,
@@ -407,7 +393,6 @@ function calculateAllPlayerData(startData, endMap, settings) {
         };
     });
 }
-
 
 function processFighterData() {
     fighterData = calculatedPlayerData
@@ -1065,6 +1050,149 @@ function handleResize() {
     }
 }
 
+// --- NEW: Kingdom Compare Logic ---
+
+function calculateKingdomSummary(profileData) {
+    if (!profileData || profileData.length === 0) {
+        return {
+            governorCount: 0,
+            totalStartPower: 0,
+            totalPowerChange: 0,
+            totalTroopPowerChange: 0,
+            totalKillsT4: 0,
+            totalKillsT5: 0,
+            totalKillsT4T5: 0,
+            totalDeads: 0,
+            totalKP: 0,
+            totalDKP: 0,
+            avgDKPPercent: 0
+        };
+    }
+
+    const summary = profileData.reduce((acc, player) => {
+        acc.totalStartPower += player['Starting Power'];
+        acc.totalPowerChange += player['Power +/-'];
+        acc.totalTroopPowerChange += player['Troop Power'];
+        acc.totalKillsT4 += player['T4 Kills'];
+        acc.totalKillsT5 += player['T5 Kills'];
+        acc.totalKillsT4T5 += player['T4+T5 Combined'];
+        acc.totalDeads += player['Kvk only Deads'];
+        acc.totalKP += player['kvk only KP'];
+        acc.totalDKP += player['KVK DKP'];
+        acc.sumDKPPercent += player.numeric_dkp_percent;
+        return acc;
+    }, {
+        governorCount: profileData.length,
+        totalStartPower: 0,
+        totalPowerChange: 0,
+        totalTroopPowerChange: 0,
+        totalKillsT4: 0,
+        totalKillsT5: 0,
+        totalKillsT4T5: 0,
+        totalDeads: 0,
+        totalKP: 0,
+        totalDKP: 0,
+        sumDKPPercent: 0
+    });
+
+    summary.avgDKPPercent = (summary.sumDKPPercent / summary.governorCount).toFixed(1);
+    return summary;
+}
+
+function renderKingdomComparison() {
+    const profileNameA = kdProfileSelectA.value;
+    const profileNameB = kdProfileSelectB.value;
+
+    if (!profileNameA || !profileNameB) {
+        kdCompareResult.innerHTML = '<p class="text-gray-500 text-center p-8">Select two profiles and click "Compare" to see the results.</p>';
+        return;
+    }
+    
+    if (profileNameA === profileNameB) {
+        kdCompareResult.innerHTML = '<p class="text-red-500 text-center p-8">Please select two different profiles to compare.</p>';
+        return;
+    }
+
+    const profileA = dkpProfiles[profileNameA];
+    const profileB = dkpProfiles[profileNameB];
+
+    if (!profileA || !profileB) {
+        kdCompareResult.innerHTML = '<p class="text-red-500 text-center p-8">Error loading profile data. Please try re-saving the profiles.</p>';
+        return;
+    }
+
+    const summaryA = calculateKingdomSummary(profileA.calculatedData);
+    const summaryB = calculateKingdomSummary(profileB.calculatedData);
+
+    const stats = [
+        { title: '# Governors', key: 'governorCount', short: false, winner: (a, b) => a > b },
+        { title: 'Total Starting Power', key: 'totalStartPower', short: true, winner: (a, b) => a > b },
+        { title: 'Total Power +/-', key: 'totalPowerChange', short: true, winner: (a, b) => a > b },
+        { title: 'Total Troop Power +/-', key: 'totalTroopPowerChange', short: true, winner: (a, b) => a > b },
+        { title: 'Total KvK KP', key: 'totalKP', short: true, winner: (a, b) => a > b },
+        { title: 'Total T4 Kills', key: 'totalKillsT4', short: true, winner: (a, b) => a > b },
+        { title: 'Total T5 Kills', key: 'totalKillsT5', short: true, winner: (a, b) => a > b },
+        { title: 'Total T4/T5 Kills', key: 'totalKillsT4T5', short: true, winner: (a, b) => a > b },
+        { title: 'Total Deads', key: 'totalDeads', short: true, winner: (a, b) => a < b }, // Lower is better
+        { title: 'Average DKP %', key: 'avgDKPPercent', short: false, winner: (a, b) => a > b, suffix: '%' }
+    ];
+
+    let statsHTML = '';
+    stats.forEach(stat => {
+        const valA = summaryA[stat.key];
+        const valB = summaryB[stat.key];
+        const suffix = stat.suffix || '';
+        
+        const valAStr = (stat.short ? formatShort(valA) : formatNumber(valA)) + suffix;
+        const valBStr = (stat.short ? formatShort(valB) : formatNumber(valB)) + suffix;
+
+        let classA = 'kd-stat-value';
+        let classB = 'kd-stat-value';
+        
+        if (stat.winner(valA, valB)) {
+            classA = 'kd-stat-value kd-winner';
+            classB = 'kd-stat-value kd-loser';
+        } else if (stat.winner(valB, valA)) {
+            classB = 'kd-stat-value kd-winner';
+            classA = 'kd-stat-value kd-loser';
+        }
+
+        statsHTML += `
+            <div class="kd-stat-row">
+                <span class="${classA}">${valAStr}</span>
+                <span class="kd-stat-title">${stat.title}</span>
+                <span class="${classB}">${valBStr}</span>
+            </div>
+        `;
+    });
+
+    const cardHTML = `
+        <div class="kd-card-container">
+            <header class="kd-header text-center">
+                <h1>Kingdom Comparison</h1>
+                <h2>Summary of Stats</h2>
+            </header>
+            <div class="kd-body">
+                <div class="kd-profile-headers">
+                    <div class="kd-profile-a">
+                        <span class="kd-profile-name">${profileNameA}</span>
+                    </div>
+                    <div class="kd-vs-circle">VS</div>
+                    <div class="kd-profile-b">
+                        <span class="kd-profile-name">${profileNameB}</span>
+                    </div>
+                </div>
+                <div class="kd-stats-grid">
+                    ${statsHTML}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    kdCompareResult.innerHTML = cardHTML;
+}
+
+
 // --- App Entry Point ---
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1078,6 +1206,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runDkpBtn.addEventListener('click', runDkpCalculation);
     loadProfileBtn.addEventListener('click', handleLoadProfile);
     deleteProfileBtn.addEventListener('click', handleDeleteProfile);
+    runKdCompareBtn.addEventListener('click', renderKingdomComparison); // NEW
     
     // Wire up resize listener
     window.addEventListener('resize', debounce(handleResize, 250));
