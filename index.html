@@ -22,15 +22,14 @@
 
         <!-- Status Bar -->
         <div class="bg-white p-4 rounded-lg shadow-lg mb-8 text-center">
-            <p id="load-status" class="text-gray-600">Waiting for data. Paste your scans and go to the "Run" tab.</p>
+            <p id="load-status" class="text-gray-600">Please create a new DKP profile or load an existing one.</p>
         </div>
 
         <!-- Tab Navigation -->
         <div class="flex flex-wrap border-b border-gray-300">
             <!-- NEW TABS -->
-            <button id="btn-start-scan" class="tab-btn">1. Start Scan</button>
-            <button id="btn-end-scan" class="tab-btn">2. End Scan</button>
-            <button id="btn-settings" class="tab-btn">3. Run & Settings</button>
+            <button id="btn-manage-data" class="tab-btn">1. Manage Data</button>
+            <button id="btn-settings" class="tab-btn">2. DKP Settings</button>
             <!-- OUTPUT TABS -->
             <button id="btn-snapshot" class="tab-btn">Snapshot</button>
             <button id="btn-player-cards" class="tab-btn">Player Cards</button>
@@ -39,33 +38,57 @@
             <button id="btn-chart" class="tab-btn">Chart</button>
         </div>
 
-        <!-- NEW: Start Scan Tab -->
-        <div id="content-start-scan" class="tab-content active">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Paste "Start Scan" Data</h2>
-            <p class="text-gray-600 mb-4">Paste your *entire* "Before" scan data here, including the header row.</p>
-            <textarea id="start-scan-data" class="scan-textarea" placeholder="Governor ID,Governor Name,Power,Troop Power,Deads..."></textarea>
-        </div>
+        <!-- NEW: Manage Data Tab -->
+        <div id="content-manage-data" class="tab-content active">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        <!-- NEW: End Scan Tab -->
-        <div id="content-end-scan" class="tab-content">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Paste "End Scan" Data</h2>
-            <p class="text-gray-600 mb-4">Paste your *entire* "After" scan data here, including the header row.</p>
-            <textarea id="end-scan-data" class="scan-textarea" placeholder="Governor ID,Governor Name,Power,Troop Power,Deads..."></textarea>
+                <!-- Create New Profile -->
+                <div class="bg-gray-50 p-6 rounded-lg border">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Create New DKP Profile</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="profile-name" class="block text-sm font-medium text-gray-700">Profile Name (e.g., "K3738 - KvK 4")</label>
+                            <input type="text" id="profile-name" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="K3738 - KvK 4">
+                        </div>
+                        <div>
+                            <label for="start-scan-file" class="block text-sm font-medium text-gray-700">Start Scan File (.csv)</label>
+                            <input type="file" id="start-scan-file" class="file-input" accept=".csv">
+                        </div>
+                        <div>
+                            <label for="end-scan-file" class="block text-sm font-medium text-gray-700">End Scan File (.csv)</label>
+                            <input type="file" id="end-scan-file" class="file-input" accept=".csv">
+                        </div>
+                        <button id="run-dkp-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-lg">
+                            Save & Run Calculation
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Load Existing Profile -->
+                <div class="bg-gray-50 p-6 rounded-lg border">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Load Existing Profile</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="profile-select" class="block text-sm font-medium text-gray-700">Select a Profile to Load</label>
+                            <select id="profile-select" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                                <option value="">-- No profiles found --</option>
+                            </select>
+                        </div>
+                        <button id="load-profile-btn" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors text-lg shadow-lg">
+                            Load Profile
+                        </button>
+                        <button id="delete-profile-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors text-sm">
+                            Delete Selected Profile
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- UPDATED: Settings Tab -->
         <div id="content-settings" class="tab-content">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Run DKP & Settings</h2>
-            
-            <!-- Run Button -->
-            <div class="bg-blue-50 border border-blue-200 p-6 rounded-lg mb-6 text-center">
-                <p class="text-blue-700 mb-4">Once your scans are pasted, click here to calculate all DKP stats.</p>
-                <button id="run-dkp-btn" class="w-full md:w-1/2 bg-blue-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-blue-700 transition-colors text-xl shadow-lg">
-                    Run DKP Calculation
-                </button>
-            </div>
-
-            <p class="text-gray-600 mb-6">Adjust the multipliers below *before* you run the calculation. This is your "DKP Simulator."</p>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">DKP Settings</h2>
+            <p class="text-gray-600 mb-6">Adjust the multipliers below. These settings are saved *per-profile*. After changing, you must click "Save & Run" on the "Manage Data" tab to apply them.</p>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Kill Point Settings -->
@@ -74,11 +97,11 @@
                     <div class="space-y-3">
                         <div>
                             <label for="setting-t4-mult" class="block text-sm font-medium text-gray-700">T4 Kills Multiplier</label>
-                            <input type="number" id="setting-t4-mult" value="10" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            <input type="number" id="setting-t4-mult" value="10" class="setting-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
                         </div>
                         <div>
                             <label for="setting-t5-mult" class="block text-sm font-medium text-gray-700">T5 Kills Multiplier</label>
-                            <input type="number" id="setting-t5-mult" value="20" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            <input type="number" id="setting-t5-mult" value="20" class="setting-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
                         </div>
                     </div>
                 </div>
@@ -89,14 +112,17 @@
                     <div class="space-y-3">
                         <div>
                             <label for="setting-deads-mult" class="block text-sm font-medium text-gray-700">Kvk Deads Multiplier</label>
-                            <input type="number" id="setting-deads-mult" value="50" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            <input type="number" id="setting-deads-mult" value="50" class="setting-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
                         </div>
                         <div>
                             <label for="setting-target-percent" class="block text-sm font-medium text-gray-700">Target DKP (% of Starting Power)</label>
-                            <input type="number" id="setting-target-percent" value="300" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                            <input type="number" id="setting-target-percent" value="300" class="setting-input mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="mt-4 text-sm text-gray-500">
+                <p><strong>Note:</strong> Changes here are not applied automatically. Go to the "Manage Data" tab and click "Save & Run" to recalculate DKP with these new settings.</p>
             </div>
         </div>
 
@@ -106,7 +132,7 @@
                 <input type="text" id="search-bar-snapshot" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search by Governor Name or ID..." disabled>
             </div>
             <div id="snapshot-table-wrapper" class="overflow-x-auto">
-                <p class="text-gray-500 col-span-full text-center p-8">Run DKP to see results.</p>
+                <p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>
             </div>
         </div>
 
@@ -116,7 +142,7 @@
                 <input type="text" id="search-bar-player-cards" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search by Governor Name or ID..." disabled>
             </div>
             <div id="player-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <p class="text-gray-500 col-span-full text-center p-8">Run DKP to see results.</p>
+                <p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>
             </div>
         </div>
 
@@ -126,7 +152,7 @@
                 <input type="text" id="search-bar-fighters" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Search fighters..." disabled>
             </div>
             <div id="fighter-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <p class="text-gray-500 col-span-full text-center p-8">Run DKP to see results.</p>
+                <p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>
             </div>
         </div>
 
@@ -137,7 +163,7 @@
                 <button id="clear-selection-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Clear Selection</button>
             </div>
             <div id="compare-table-wrapper" class="overflow-x-auto">
-                <p class="text-gray-500 text-center p-8">Run DKP to see results.</p>
+                <p class="text-gray-500 text-center p-8">Load or create a DKP profile to see results.</p>
             </div>
         </div>
 
