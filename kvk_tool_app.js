@@ -1,5 +1,4 @@
 // --- App State ---
-let allPlayerData = []; // Raw data from the sheet
 let calculatedPlayerData = []; // Processed data after calculations
 let fighterData = [];
 let selectedPlayers = []; // Array of Governor IDs
@@ -13,21 +12,25 @@ let dkpSettings = {
     targetPercent: 300
 };
 
-// --- Google Sheet URL ---
-// THIS IS NOW POINTING TO YOUR "FORMULA" SHEET
-const sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSLu0NZqFyPM9SuOG3g8E6PawHhKAo_C7uqrg6OYpn3XqyFk12zwvGZf-6tho2zrMG8fQN_KAaXLfLK/pub?gid=257458671&single=true&output=csv';
-
 // --- DOM Element Refs ---
 const loadStatus = document.getElementById('load-status');
-const forceRefreshBtn = document.getElementById('force-refresh');
+const runDkpBtn = document.getElementById('run-dkp-btn');
+
+// Scan Data Textareas
+const startScanInput = document.getElementById('start-scan-data');
+const endScanInput = document.getElementById('end-scan-data');
 
 const tabs = {
+    // NEW TABS
+    startScan: { btn: document.getElementById('btn-start-scan'), content: document.getElementById('content-start-scan') },
+    endScan: { btn: document.getElementById('btn-end-scan'), content: document.getElementById('content-end-scan') },
+    settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
+    // Output Tabs
     snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
     playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
     fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
     compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
-    chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-    settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') }
+    chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') }
 };
 
 const searchBars = {
@@ -92,11 +95,9 @@ function debounce(func, wait) {
 
 function parseCSV(data) {
     const lines = data.trim().split('\n');
-    // We now know the headers are A-M ("Before") and N-W ("After")
-    // But the CSV export gives us ALL columns, A, B, C... AP
     const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, ''));
     
-    const rawData = lines.map(line => {
+    return lines.map(line => {
         const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
         let player = {};
         headers.forEach((header, index) => {
@@ -104,36 +105,95 @@ function parseCSV(data) {
         });
         return player;
     });
-    
-    // Store raw data and process it
-    allPlayerData = rawData;
-    calculateAllPlayerData();
 }
 
 /**
- * NEW: This function calculates all DKP stats based on settings
+ * NEW: This is the main function triggered by the "Run DKP" button
  */
-function calculateAllPlayerData() {
-    calculatedPlayerData = allPlayerData.map(p => {
-        // --- Calculate Stats from Before/After ---
-        // We use the formulas you provided!
-        const startPower = cleanNumber(p['Starting Power']); // Col C
-        const startTroopPower = cleanNumber(p['Troop Power']); // Col D
-        const startT1 = cleanNumber(p['T1 Kills']); // Col G
-        const startT2 = cleanNumber(p['T2 Kills']); // Col H
-        const startT3 = cleanNumber(p['T3 Kills']); // Col I
-        const startT4 = cleanNumber(p['T4 Kills']); // Col J
-        const startT5 = cleanNumber(p['T5 Kills']); // Col K
-        const startDeads = cleanNumber(p['Deads']); // Col E
+function runDkpCalculation() {
+    loadStatus.textContent = "Calculating...";
+    
+    try {
+        // 1. Get new settings from inputs
+        dkpSettings.t4Mult = parseFloat(settingsInputs.t4Mult.value) || 0;
+        dkpSettings.t5Mult = parseFloat(settingsInputs.t5Mult.value) || 0;
+        dkpSettings.deadsMult = parseFloat(settingsInputs.deadsMult.value) || 0;
+        dkpSettings.targetPercent = parseFloat(settingsInputs.targetPercent.value) || 0;
         
-        const endPower = cleanNumber(p['Power_end']); // Col O
-        const endTroopPower = cleanNumber(p['Troop Power_end']); // Col P
-        const endT1 = cleanNumber(p['T1 Kills_end']); // Col S
-        const endT2 = cleanNumber(p['T2 Kills_end']); // Col T
-        const endT3 = cleanNumber(p['T3 Kills_end']); // Col U
-        const endT4 = cleanNumber(p['T4 Kills_end']); // Col V
-        const endT5 = cleanNumber(p['T5 Kills_end']); // Col W
-        const endDeads = cleanNumber(p['Deads_end']); // Col Q
+        // 2. Parse the two textareas
+        const startScanData = parseCSV(startScanInput.value);
+        const endScanData = parseCSV(endScanInput.value);
+        
+        // 3. Create a fast lookup map for the "End Scan" data
+        // This replaces the VLOOKUP
+        const endScanMap = new Map();
+        endScanData.forEach(player => {
+            endScanMap.set(player['Governor ID'], player);
+        });
+        
+        // 4. Calculate all player data
+        calculateAllPlayerData(startScanData, endScanMap);
+        
+        // 5. Re-render all tabs with new data
+        renderAllTabs();
+        
+        // 6. Re-render the chart
+        renderScatterChart();
+
+        // 7. Enable search
+        Object.values(searchBars).forEach(bar => bar.disabled = false);
+
+        loadStatus.textContent = `Successfully calculated DKP for ${calculatedPlayerData.length} players.`;
+        activateTab('snapshot'); // Show the results!
+
+    } catch (err) {
+        console.error("Error during DKP calculation:", err);
+        loadStatus.textContent = "Error: Could not parse scan data. Make sure it was pasted correctly.";
+    }
+}
+
+
+/**
+ * NEW: This function calculates all DKP stats based on the two scans
+ */
+function calculateAllPlayerData(startData, endMap) {
+    calculatedPlayerData = startData.map(startPlayer => {
+        const govId = startPlayer['Governor ID'];
+        const endPlayer = endMap.get(govId);
+
+        // If player isn't in the end scan, return default data
+        if (!endPlayer) {
+            return {
+                'Governor ID': govId,
+                'Governor Name': startPlayer['Governor Name'],
+                'Starting Power': cleanNumber(startPlayer['Power']),
+                // ... all other fields set to 0 or "N/A"
+                'numeric_kvk_kp': 0,
+                'numeric_deads': 0,
+                'numeric_dkp_percent': 0,
+                'numeric_power': cleanNumber(startPlayer['Power']),
+                'numeric_t4t5': 0
+            };
+        }
+
+        // --- Calculate Stats from Before/After ---
+        const startPower = cleanNumber(startPlayer['Power']);
+        const startTroopPower = cleanNumber(startPlayer['Troop Power']);
+        const startT1 = cleanNumber(startPlayer['T1 Kills']);
+        const startT2 = cleanNumber(startPlayer['T2 Kills']);
+        const startT3 = cleanNumber(startPlayer['T3 Kills']);
+        const startT4 = cleanNumber(startPlayer['T4 Kills']);
+        const startT5 = cleanNumber(startPlayer['T5 Kills']);
+        const startDeads = cleanNumber(startPlayer['Deads']);
+        
+        const endPower = cleanNumber(endPlayer['Power']);
+        const endTroopPower = cleanNumber(endPlayer['Troop Power']);
+        const endT1 = cleanNumber(endPlayer['T1 Kills']);
+        const endT2 = cleanNumber(endPlayer['T2 Kills']);
+        const endT3 = cleanNumber(endPlayer['T3 Kills']);
+        const endT4 = cleanNumber(endPlayer['T4 Kills']);
+        const endT5 = cleanNumber(endPlayer['T5 Kills']);
+        const endDeads = cleanNumber(endPlayer['Deads']);
         
         // These are the KvK-only stats
         const numeric_t1 = endT1 - startT1;
@@ -163,8 +223,8 @@ function calculateAllPlayerData() {
         
         // Return a new object matching the structure our tabs expect
         return {
-            'Governor ID': p['Governor ID'],
-            'Governor Name': p['Governor Name'],
+            'Governor ID': govId,
+            'Governor Name': startPlayer['Governor Name'],
             'Starting Power': startPower,
             'Power +/-': numeric_power_plus,
             'Troop Power': numeric_troop_power_plus,
@@ -191,28 +251,6 @@ function calculateAllPlayerData() {
 
     // Re-process fighter data
     processFighterData();
-}
-
-/**
- * This re-calculates all data and updates all tabs
- */
-function recalculateAndRenderAll() {
-    // 1. Get new settings from inputs
-    dkpSettings.t4Mult = parseFloat(settingsInputs.t4Mult.value) || 0;
-    dkpSettings.t5Mult = parseFloat(settingsInputs.t5Mult.value) || 0;
-    dkpSettings.deadsMult = parseFloat(settingsInputs.deadsMult.value) || 0;
-    dkpSettings.targetPercent = parseFloat(settingsInputs.targetPercent.value) || 0;
-    
-    // 2. Re-run all calculations
-    calculateAllPlayerData();
-    
-    // 3. Re-render all tabs with new data
-    renderAllTabs();
-    
-    // 4. Re-render the chart if it's the active one
-    if (tabs.chart.content.classList.contains('active')) {
-        renderScatterChart();
-    }
 }
 
 
@@ -377,7 +415,7 @@ function renderFighterCards() {
     const fragment = document.createDocumentFragment();
 
     if (fighterData.length === 0) {
-        fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">No fighters found. (Min 20M Power & >0 KvK KP)</p>';
+        fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Run DKP to see results. (Min 20M Power & >0 KvK KP)</p>';
         return;
     }
 
@@ -457,7 +495,13 @@ function renderScatterChart() {
     ctx.scale(2, 2);
 
     const chartData = calculatedPlayerData.filter(p => p.numeric_t4t5 > 0 || p.numeric_deads > 0);
-    if (chartData.length === 0) return;
+    if (chartData.length === 0) {
+        ctx.font = "16px Inter";
+        ctx.fillStyle = "#6b7280";
+        ctx.textAlign = "center";
+        ctx.fillText("Run DKP to see chart data.", width / 2, height / 2);
+        return;
+    }
 
     const margin = { top: 30, right: 30, bottom: 50, left: 60 };
     const innerWidth = width - margin.left - margin.right;
@@ -801,9 +845,13 @@ function renderComparison() {
 
         let values = [];
         playersToCompare.forEach(p => {
+            // Get the value. Note: 'DKP % Complete' is already a string
+            const rawValue = p[metric];
+            const isPercent = metric === 'DKP % Complete';
+            
             values.push({
-                val: p[metric], // Use pre-calculated number
-                formatted: (metric === 'DKP % Complete') ? `${p[metric]}%` : formatNumber(p[metric])
+                val: isPercent ? parseFloat(rawValue) : rawValue,
+                formatted: isPercent ? `${rawValue}%` : formatNumber(rawValue)
             });
         });
 
@@ -835,6 +883,11 @@ function renderComparison() {
 // --- Tab Switching ---
 
 function activateTab(tabName) {
+    // Default to 'startScan' if no tab is specified or data is missing
+    if (!tabName && calculatedPlayerData.length === 0) {
+        tabName = 'startScan';
+    }
+    
     Object.keys(tabs).forEach(key => {
         const isTarget = key === tabName;
         tabs[key].btn.classList.toggle('active', isTarget);
@@ -846,83 +899,6 @@ function activateTab(tabName) {
     });
 }
 
-Object.keys(tabs).forEach(key => {
-    tabs[key].btn.addEventListener('click', () => activateTab(key));
-});
-
-// --- Data Fetching & Caching ---
-
-async function fetchData(force = false) {
-    loadStatus.textContent = "Checking for data updates...";
-    
-    const cachedData = localStorage.getItem('kvkData');
-    const cachedTime = localStorage.getItem('kvkDataTimestamp');
-
-    if (cachedData && cachedTime && !force) {
-        loadStatus.textContent = `Loading cached data from ${new Date(cachedTime).toLocaleString()}`;
-        try {
-            parseCSV(cachedData); // This now populates allPlayerData and calls calculateAllPlayerData
-            renderAllTabs();
-            
-            Object.values(searchBars).forEach(bar => bar.disabled = false);
-            forceRefreshBtn.disabled = false;
-        } catch (e) {
-            console.error("Error parsing cached data:", e);
-            localStorage.clear();
-            fetchData(true);
-            return;
-        }
-        
-        checkRemoteData(cachedData);
-    } else {
-        loadStatus.textContent = "Fetching live data from Google Sheets...";
-        try {
-            const response = await fetch(sheetUrl);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const csvData = await response.text();
-            
-            const newTimestamp = new Date().toISOString();
-            localStorage.setItem('kvkData', csvData);
-            localStorage.setItem('kvkDataTimestamp', newTimestamp);
-
-            parseCSV(csvData);
-            renderAllTabs();
-            
-            Object.values(searchBars).forEach(bar => bar.disabled = false);
-            forceRefreshBtn.disabled = false;
-            loadStatus.textContent = `Data loaded and saved. (Updated: ${new Date(newTimestamp).toLocaleString()})`;
-
-        } catch (err) {
-            console.error("Fetch Error:", err);
-            loadStatus.textContent = "Error loading data. Please try refreshing the page.";
-        }
-    }
-}
-
-async function checkRemoteData(cachedData) {
-    try {
-        const response = await fetch(sheetUrl);
-        if (!response.ok) return;
-        const csvData = await response.text();
-
-        if (cachedData === csvData) {
-            loadStatus.textContent = `Data is already up to date. (Last check: ${new Date().toLocaleTimeString()})`;
-        } else {
-            const newTimestamp = new Date().toISOString();
-            localStorage.setItem('kvkData', csvData);
-            localStorage.setItem('kvkDataTimestamp', newTimestamp);
-
-            parseCSV(csvData);
-            renderAllTabs();
-            
-            loadStatus.textContent = `Data updated! Successfully loaded ${allPlayerData.length} players. (Updated: ${new Date(newTimestamp).toLocaleString()})`;
-        }
-    } catch (err) {
-        console.error("Background fetch failed:", err);
-        loadStatus.textContent = `Cached data loaded. Background update failed. (Last check: ${new Date().toLocaleTimeString()})`;
-    }
-}
-
 // --- Resize Handling ---
 function handleResize() {
     if (tabs.chart.content.classList.contains('active')) {
@@ -932,21 +908,22 @@ function handleResize() {
 
 // --- App Entry Point ---
 
-forceRefreshBtn.addEventListener('click', () => {
-    loadStatus.textContent = "Forcing data refresh...";
-    forceRefreshBtn.disabled = true;
-    fetchData(true);
-});
-
 document.addEventListener('DOMContentLoaded', () => {
-    activateTab('snapshot');
+    // Set default tab to 'startScan'
+    activateTab('startScan');
+    
+    // Wire up search
     setupSearch();
     
-    // Add listeners to settings inputs
+    // Wire up Run DKP button
+    runDkpBtn.addEventListener('click', runDkpCalculation);
+    
+    // Wire up settings inputs to re-calculate
     Object.values(settingsInputs).forEach(input => {
-        input.addEventListener('change', recalculateAndRenderAll);
+        // Use 'input' for real-time, 'change' for on blur
+        input.addEventListener('change', runDkpCalculation);
     });
     
-    fetchData();
+    // Wire up resize listener
     window.addEventListener('resize', debounce(handleResize, 250));
 });
