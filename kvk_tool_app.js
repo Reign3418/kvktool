@@ -26,7 +26,7 @@ const tabs = {
     fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
     compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
     chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-    kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') } // NEW
+    kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
 };
 
 const searchBars = {
@@ -51,7 +51,6 @@ const compareBtn = document.getElementById('btn-compare');
 const clearBtn = document.getElementById('clear-selection-btn');
 const compareWrapper = document.getElementById('compare-table-wrapper');
 
-// NEW: Kingdom Compare DOM Refs
 const kdProfileSelectA = document.getElementById('kd-profile-select-a');
 const kdProfileSelectB = document.getElementById('kd-profile-select-b');
 const runKdCompareBtn = document.getElementById('run-kd-compare-btn');
@@ -136,8 +135,8 @@ function saveProfilesToStorage() {
 
 function updateProfileDropdown() {
     profileSelect.innerHTML = ''; // Clear existing options
-    kdProfileSelectA.innerHTML = ''; // NEW
-    kdProfileSelectB.innerHTML = ''; // NEW
+    kdProfileSelectA.innerHTML = '';
+    kdProfileSelectB.innerHTML = '';
     
     const profileNames = Object.keys(dkpProfiles);
 
@@ -188,14 +187,18 @@ function handleLoadProfile() {
     // 3. Process and render
     processFighterData();
     renderAllTabs();
-    renderScatterChart();
     
     // 4. Update state
     currentProfileName = profileName;
     profileNameInput.value = profileName; // Set name in case of re-save
     Object.values(searchBars).forEach(bar => bar.disabled = false);
     loadStatus.textContent = `Successfully loaded profile: ${profileName}`;
-    activateTab('snapshot');
+    activateTab('snapshot'); // Show the results!
+    
+    // FIX: Manually trigger chart render *after* tab is visible
+    if (tabs.chart.btn.classList.contains('active')) {
+        renderScatterChart();
+    }
 }
 
 function handleDeleteProfile() {
@@ -228,7 +231,7 @@ function clearAllData() {
         bar.value = "";
     });
     renderAllTabs();
-    renderScatterChart();
+    renderScatterChart(); // Re-render to show "no data" message
     loadStatus.textContent = "Please create a new DKP profile or load an existing one.";
     activateTab('manageData');
 }
@@ -248,7 +251,7 @@ async function runDkpCalculation() {
     const endFile = endScanInput.files[0];
 
     // Check if we are re-saving a profile. If so, file uploads are optional.
-    if (!startFile || !endFile) {
+    if (!startFile && !endFile) {
         if (dkpProfiles[profileName]) {
             loadStatus.textContent = "Re-calculating with new settings...";
         } else {
@@ -284,7 +287,7 @@ async function runDkpCalculation() {
                 endScanRaw: endScanText,
             };
 
-        } else if (dkpProfiles[profileName]) {
+        } else if (dkpProfiles[profileName] && dkpProfiles[profileName].startScanRaw) {
             // No new files, re-calculate from saved raw data
             startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
             endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
@@ -316,7 +319,6 @@ async function runDkpCalculation() {
         
         processFighterData();
         renderAllTabs();
-        renderScatterChart();
         Object.values(searchBars).forEach(bar => bar.disabled = false);
 
         loadStatus.textContent = `Successfully saved and calculated DKP for ${profileName}.`;
@@ -330,7 +332,7 @@ async function runDkpCalculation() {
 
 
 /**
- * NEW: This function calculates all DKP stats based on the two scans
+ * This function calculates all DKP stats based on the two scans
  */
 function calculateAllPlayerData(startData, endMap, settings) {
     calculatedPlayerData = startData.map(startPlayer => {
@@ -431,6 +433,7 @@ function renderAllTabs() {
     renderPlayerCards();
     renderFighterCards();
     renderComparison();
+    // Chart is rendered on-demand when tab is clicked
 }
 
 function renderSnapshotTable() {
@@ -439,11 +442,6 @@ function renderSnapshotTable() {
         return;
     }
     
-    // --- PERFORMANCE OPTIMIZATION ---
-    // Instead of creating thousands of DOM elements one by one,
-    // we will build the entire table as a single HTML string.
-    // This is dramatically faster.
-
     const kps = calculatedPlayerData.map(p => p.numeric_kvk_kp);
     const deads = calculatedPlayerData.map(p => p.numeric_deads);
     const dkps = calculatedPlayerData.map(p => p.numeric_dkp_percent);
@@ -458,9 +456,12 @@ function renderSnapshotTable() {
 
     sortData(calculatedPlayerData);
     
-    let tableHTML = '<table class="snapshot-table">';
+    snapshotTableWrapper.innerHTML = '';
+    const table = document.createElement('table');
+    table.className = 'snapshot-table';
     
-    // Build Headers
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
     const headers = [
         { text: '', sort: null, class: 'compare-checkbox-cell' },
         { text: 'Name', sort: 'Governor Name', class: '' },
@@ -470,58 +471,75 @@ function renderSnapshotTable() {
         { text: 'DKP %', sort: 'numeric_dkp_percent', class: '' }
     ];
     
-    let headerHTML = '<thead><tr>';
     headers.forEach(h => {
-        let sortIndicator = '';
-        if (h.sort === currentSort.column) {
-            sortIndicator = currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
+        const th = document.createElement('th');
+        th.textContent = h.text;
+        if (h.class) th.className = h.class;
+        if (h.sort) {
+            th.dataset.sort = h.sort;
+            th.addEventListener('click', handleSort);
+            if (h.sort === currentSort.column) {
+                th.innerHTML += currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
+            }
         }
-        headerHTML += `<th class="${h.class || ''}" ${h.sort ? `data-sort="${h.sort}"` : ''}>${h.text}${sortIndicator}</th>`;
+        headerRow.appendChild(th);
     });
-    headerHTML += '</tr></thead>';
-    tableHTML += headerHTML;
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
 
-    // Build Body
-    let bodyHTML = '<tbody>';
+    const tbody = document.createElement('tbody');
     calculatedPlayerData.forEach(player => {
+        const tr = document.createElement('tr');
         const govId = player['Governor ID'];
-        const isChecked = selectedPlayers.includes(govId);
+        tr.dataset.id = govId;
+        tr.dataset.name = player['Governor Name'].toLowerCase();
 
-        // Calculate heatmap opacity
-        const kpOpacity = normalize(player.numeric_kvk_kp, max.kp_min, max.kp);
-        const t4t5Opacity = normalize(player.numeric_t4t5, max.t4t5_min, max.t4t5);
-        const deadsOpacity = normalize(player.numeric_deads, max.deads_min, max.deads);
-        const dkpOpacity = normalize(player.numeric_dkp_percent, max.dkp_min, max.dkp);
+        const tdCheck = document.createElement('td');
+        tdCheck.className = 'compare-checkbox-cell';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'compare-checkbox';
+        checkbox.dataset.id = govId;
+        checkbox.checked = selectedPlayers.includes(govId);
+        checkbox.title = 'Select to Compare';
+        checkbox.addEventListener('change', handleCheck);
+        tdCheck.appendChild(checkbox);
+        tr.appendChild(tdCheck);
 
-        bodyHTML += `
-            <tr data-id="${govId}" data-name="${player['Governor Name'].toLowerCase()}">
-                <td class="compare-checkbox-cell">
-                    <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
-                </td>
-                <td title="${govId}">${player['Governor Name']}</td>
-                <td data-heatmap-color="green" style="--heatmap-opacity: ${kpOpacity};">${formatShort(player.numeric_kvk_kp)}</td>
-                <td data-heatmap-color="green" style="--heatmap-opacity: ${t4t5Opacity};">${formatShort(player.numeric_t4t5)}</td>
-                <td data-heatmap-color="red" style="--heatmap-opacity: ${deadsOpacity};">${formatNumber(player.numeric_deads)}</td>
-                <td data-heatmap-color="blue" style="--heatmap-opacity: ${dkpOpacity};">${player['DKP % Complete']}%</td>
-            </tr>
-        `;
+        const tdName = document.createElement('td');
+        tdName.textContent = player['Governor Name'];
+        tdName.title = govId;
+        tr.appendChild(tdName);
+
+        const tdKP = document.createElement('td');
+        tdKP.textContent = formatShort(player.numeric_kvk_kp);
+        tdKP.dataset.heatmapColor = 'green';
+        tdKP.style = `--heatmap-opacity: ${normalize(player.numeric_kvk_kp, max.kp_min, max.kp)}`;
+        tr.appendChild(tdKP);
+
+        const tdT4T5 = document.createElement('td');
+        tdT4T5.textContent = formatShort(player.numeric_t4t5);
+        tdT4T5.dataset.heatmapColor = 'green';
+        tdT4T5.style = `--heatmap-opacity: ${normalize(player.numeric_t4t5, max.t4t5_min, max.t4t5)}`;
+        tr.appendChild(tdT4T5);
+
+        const tdDeads = document.createElement('td');
+        tdDeads.textContent = formatNumber(player.numeric_deads);
+        tdDeads.dataset.heatmapColor = 'red';
+        tdDeads.style = `--heatmap-opacity: ${normalize(player.numeric_deads, max.deads_min, max.deads)}`;
+        tr.appendChild(tdDeads);
+
+        const tdDKP = document.createElement('td');
+        tdDKP.textContent = `${player['DKP % Complete']}%`;
+        tdDKP.dataset.heatmapColor = 'blue';
+        tdDKP.style = `--heatmap-opacity: ${normalize(player.numeric_dkp_percent, max.dkp_min, max.dkp)}`;
+        tr.appendChild(tdDKP);
+
+        tbody.appendChild(tr);
     });
     
-    bodyHTML += '</tbody>';
-    tableHTML += bodyHTML;
-    tableHTML += '</table>';
-
-    // --- END PERFORMANCE OPTIMIZATION ---
-    // Now we set the HTML *one time*
-    snapshotTableWrapper.innerHTML = tableHTML;
-    
-    // Add event listeners after the table is in the DOM
-    snapshotTableWrapper.querySelectorAll('.compare-checkbox').forEach(box => {
-        box.addEventListener('change', handleCheck);
-    });
-    snapshotTableWrapper.querySelectorAll('th[data-sort]').forEach(th => {
-        th.addEventListener('click', handleSort);
-    });
+    table.appendChild(tbody);
+    snapshotTableWrapper.appendChild(table);
 }
 
 function renderPlayerCards() {
@@ -1059,7 +1077,7 @@ function handleResize() {
     }
 }
 
-// --- NEW: Kingdom Compare Logic ---
+// --- Kingdom Compare Logic ---
 
 function calculateKingdomSummary(profileData) {
     if (!profileData || profileData.length === 0) {
@@ -1215,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runDkpBtn.addEventListener('click', runDkpCalculation);
     loadProfileBtn.addEventListener('click', handleLoadProfile);
     deleteProfileBtn.addEventListener('click', handleDeleteProfile);
-    runKdCompareBtn.addEventListener('click', renderKingdomComparison); // NEW
+    runKdCompareBtn.addEventListener('click', renderKingdomComparison);
     
     // Wire up resize listener
     window.addEventListener('resize', debounce(handleResize, 250));
