@@ -1,19 +1,32 @@
 /**
  * UNITY - KvK DKP Calculator
- * This is Part 1 of 3 of the main application script.
+ * This is Part 1 of 4 of the main application script.
+ * This part contains all global state, DOM references, and core data processing functions.
  */
 
-// --- App State ---
-let allPlayerData = []; // Holds the calculated data for the currently loaded profile
-let selectedPlayers = []; // Array of Governor IDs for comparison
-let currentProfileName = null; // The name of the currently loaded profile
-let currentSort = { column: 'dkpPercent', direction: 'desc' }; // Default sort
-let currentChart = null; // Holds the D3 chart instance
+// --- Global State ---
+let allPlayerData = [];
+let selectedPlayers = []; // Array of Governor IDs
+let currentProfileName = null;
+let currentSort = { column: 'dkpPercent', direction: 'desc' };
 
-// --- DOM Element Refs ---
+// --- DOM Element Cache ---
+// We cache all DOM elements on load for performance
 const dom = {
     loadStatus: document.getElementById('load-status'),
     
+    // Tabs
+    tabs: {
+        manageData: { btn: document.getElementById('btn-manage-data'), content: document.getElementById('content-manage-data') },
+        settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
+        snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
+        playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
+        fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
+        compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
+        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
+        kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
+    },
+
     // Manage Data Tab
     profileNameInput: document.getElementById('profile-name'),
     startScanFile: document.getElementById('start-scan-file'),
@@ -30,19 +43,7 @@ const dom = {
         deadsMult: document.getElementById('setting-deads-mult'),
         targetPercent: document.getElementById('setting-target-percent')
     },
-
-    // Output Tabs
-    tabs: {
-        manageData: { btn: document.getElementById('btn-manage-data'), content: document.getElementById('content-manage-data') },
-        settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
-        snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
-        playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
-        fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
-        compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
-        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-        kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
-    },
-
+    
     // Search Bars
     searchBars: {
         snapshot: document.getElementById('search-bar-snapshot'),
@@ -50,21 +51,21 @@ const dom = {
         fighters: document.getElementById('search-bar-fighters')
     },
 
-    // Content Wrappers
+    // Content Grids
+    snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
     playerGrid: document.getElementById('player-grid'),
     fighterGrid: document.getElementById('fighter-grid'),
-    snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
     
     // Compare Tab
     compareBtn: document.getElementById('btn-compare'),
     clearBtn: document.getElementById('clear-selection-btn'),
     compareWrapper: document.getElementById('compare-table-wrapper'),
-
+    
     // Chart Tab
     chartContainer: document.querySelector('.chart-container'),
     chartCanvas: document.getElementById('scatter-chart'),
     chartTooltip: document.getElementById('chart-tooltip'),
-
+    
     // Kd Compare Tab
     kdProfileSelectA: document.getElementById('kd-profile-select-a'),
     kdProfileSelectB: document.getElementById('kd-profile-select-b'),
@@ -72,8 +73,9 @@ const dom = {
     kdCompareResult: document.getElementById('kd-compare-result')
 };
 
-// --- DATA MAPPING (From our calibration) ---
-// This tells the app what to look for in the raw CSV files.
+
+// --- Data Mapping (From our calibration) ---
+// This tells the app what the column headers in the CSV are named.
 const DATA_MAP = {
     id: "Governor ID",
     name: "Governor Name",
@@ -85,21 +87,35 @@ const DATA_MAP = {
     t4kills: "T4 Kills",
     t5kills: "T5 Kills",
     deads: "Deads",
-    kp: "Kill Points" // This is the raw KP from the scan
+    kp: "Kill Points" // The raw "Kill Points" from the scan
 };
-
 
 // --- Utility Functions ---
 
+/**
+ * Cleans and parses a number string (e.g., "1,234,567")
+ * @param {string} str The string to clean.
+ * @returns {number} The parsed number.
+ */
 function cleanNumber(str) {
     if (typeof str !== 'string') return 0;
     return parseInt(str.replace(/,/g, '').replace(/"/g, ''), 10) || 0;
 }
 
+/**
+ * Formats a number with commas.
+ * @param {number} num The number to format.
+ * @returns {string} A string with commas (e.g., "1,234,567").
+ */
 function formatNumber(num) {
     return new Intl.NumberFormat('en-US').format(num);
 }
 
+/**
+ * Formats a number into a short string (e.g., "1.2M", "3.4B").
+ * @param {number} num The number to format.
+ * @returns {string} A short string representation.
+ */
 function formatShort(num) {
     if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + 'B';
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M';
@@ -107,64 +123,39 @@ function formatShort(num) {
     return num.toString();
 }
 
+/**
+ * Normalizes a value to a 0-1 range for heatmaps.
+ * @param {number} val The value to normalize.
+ * @param {number} min The minimum value in the dataset.
+ * @param {number} max The maximum value in the dataset.
+ * @returns {number} A value between 0 and 1.
+ */
 function normalize(val, min, max) {
     if (max === min) return 1; // Avoid division by zero
     return (val - min) / (max - min);
 }
 
-// Debounce function to limit how often a function can run
-function debounce(func, delay = 250) {
+/**
+ * A debouncer function to limit how often a function can run.
+ * Used for the chart resizing.
+ * @param {function} func The function to debounce.
+ * @param {number} delay The delay in milliseconds.
+ * @returns {function} The debounced function.
+ */
+function debounce(func, delay) {
     let timeout;
-    return (...args) => {
+    return function(...args) {
+        const context = this;
         clearTimeout(timeout);
-        timeout = setTimeout(() => {
-            func.apply(this, args);
-        }, delay);
+        timeout = setTimeout(() => func.apply(context, args), delay);
     };
 }
 
-// --- CSV Parsing ---
-function parseCSV(data) {
-    try {
-        const lines = data.trim().split('\n');
-        // Handle potential BOM (Byte Order Mark) at the start of the file
-        if (lines[0].charCodeAt(0) === 0xFEFF) {
-            lines[0] = lines[0].substring(1);
-        }
-        
-        const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, ''));
-        
-        // --- Data Mapping Check ---
-        // Verify that all required headers from DATA_MAP exist in the CSV
-        const csvHeaders = new Set(headers);
-        let missingHeaders = [];
-        Object.values(DATA_MAP).forEach(headerName => {
-            if (!csvHeaders.has(headerName)) {
-                missingHeaders.push(headerName);
-            }
-        });
-
-        if (missingHeaders.length > 0) {
-            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
-        }
-        // --- End Check ---
-
-        return lines.map(line => {
-            // Regex to split on commas not inside quotes
-            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            let row = {};
-            headers.forEach((header, index) => {
-                row[header] = (values[index] || '').trim().replace(/"/g, '');
-            });
-            return row;
-        });
-    } catch (e) {
-        console.error("Failed to parse CSV", e);
-        setStatus(`Error: ${e.message}. Check file format.`, true);
-        return null;
-    }
-}
-
+/**
+ * Reads an uploaded file as plain text.
+ * @param {File} file The file from the <input type="file">.
+ * @returns {Promise<string>} A promise that resolves with the file's text content.
+ */
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -173,124 +164,189 @@ function readFileAsText(file) {
         reader.readAsText(file);
     });
 }
+
+
+// --- Data Parsing & Processing ---
+
 /**
- * UNITY - KvK DKP Calculator
- * This is Part 2 of 3 of the main application script.
- * This part contains the DKP calculation and rendering functions.
+ * Parses raw CSV text into an array of player objects.
+ * @param {string} data The raw CSV text.
+ * @returns {Array<Object> | null} An array of objects, or null if parsing fails.
  */
+function parseCSV(data) {
+    try {
+        const lines = data.trim().split('\n');
+        // Remove any carriage returns
+        const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, '').replace(/\r/g, ''));
+        
+        // --- Data Validation ---
+        // Check if all our required headers exist in the CSV
+        const requiredHeaders = Object.values(DATA_MAP);
+        let missingHeaders = [];
+        for (const requiredHeader of requiredHeaders) {
+            if (!headers.includes(requiredHeader)) {
+                missingHeaders.push(requiredHeader);
+            }
+        }
+        
+        if (missingHeaders.length > 0) {
+            console.error("CSV parsing failed. Missing headers:", missingHeaders);
+            setStatus(`Error: CSV file is missing required columns: ${missingHeaders.join(', ')}`, true);
+            return null; // Stop execution
+        }
+        
+        // Find the *index* of each required header
+        const headerIndices = {};
+        for (const key in DATA_MAP) {
+            headerIndices[key] = headers.indexOf(DATA_MAP[key]);
+        }
+        
+        // --- Process Lines ---
+        return lines.map(line => {
+            // Regex to split on commas not inside quotes
+            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            let player = {};
+            
+            // Use the headerIndices map to pull data
+            // This is robust to column order changes
+            for (const key in headerIndices) {
+                const index = headerIndices[key];
+                player[DATA_MAP[key]] = (values[index] || '').trim().replace(/"/g, '').replace(/\r/g, '');
+            }
+            return player;
+        }).filter(p => p[DATA_MAP.id]); // Filter out any empty rows
 
-// --- DKP Calculation Engine ---
-function runDKPCalculation(startScanData, endScanData, settings) {
-    setStatus("Calculating DKP...");
-    
-    // 1. Create a "lookup map" from the start scan for fast access
-    const startScanMap = new Map();
-    for (const player of startScanData) {
-        const id = player[DATA_MAP.id];
-        if (id) {
-            startScanMap.set(id, player);
+    } catch (e) {
+        console.error("Fatal CSV parsing error:", e);
+        setStatus(`Error: Failed to parse CSV. Is it a valid CSV file? (${e.message})`, true);
+        return null;
+    }
+}
+
+/**
+ * The core DKP calculation engine.
+ * Takes the raw "start" and "end" data and the settings,
+ * and returns the final calculated player data.
+ * @param {Array<Object>} startData - Parsed "Start Scan" data.
+ * @param {Array<Object>} endData - Parsed "End Scan" data.
+ * @param {Object} settings - The DKP multipliers.
+ * @returns {Array<Object>} The final array of all player data.
+ */
+function runDKPCalculation(startData, endData, settings) {
+    const endDataMap = new Map(endData.map(p => [p[DATA_MAP.id], p]));
+    let calculatedData = [];
+
+    // Loop through the START scan. This is our master list of players.
+    for (const startPlayer of startData) {
+        const id = startPlayer[DATA_MAP.id];
+        const endPlayer = endDataMap.get(id);
+
+        // If player isn't in the end scan, they probably migrated. Skip 'em.
+        if (!endPlayer) {
+            console.warn(`Player ${startPlayer[DATA_MAP.name]} (${id}) not found in End Scan. Skipping.`);
+            continue;
+        }
+
+        try {
+            // --- 1. Get (After - Before) Stats ---
+            const startPower = cleanNumber(startPlayer[DATA_MAP.power]);
+            const endPower = cleanNumber(endPlayer[DATA_MAP.power]);
+            const startTroopPower = cleanNumber(startPlayer[DATA_MAP.troopPower]);
+            const endTroopPower = cleanNumber(endPlayer[DATA_MAP.troopPower]);
+            const t1kills = cleanNumber(endPlayer[DATA_MAP.t1kills]) - cleanNumber(startPlayer[DATA_MAP.t1kills]);
+            const t2kills = cleanNumber(endPlayer[DATA_MAP.t2kills]) - cleanNumber(startPlayer[DATA_MAP.t2kills]);
+            const t3kills = cleanNumber(endPlayer[DATA_MAP.t3kills]) - cleanNumber(startPlayer[DATA_MAP.t3kills]);
+            const t4kills = cleanNumber(endPlayer[DATA_MAP.t4kills]) - cleanNumber(startPlayer[DATA_MAP.t4kills]);
+            const t5kills = cleanNumber(endPlayer[DATA_MAP.t5kills]) - cleanNumber(startPlayer[DATA_MAP.t5kills]);
+            const deads = cleanNumber(endPlayer[DATA_MAP.deads]) - cleanNumber(startPlayer[DATA_MAP.deads]);
+            const rawKP = cleanNumber(endPlayer[DATA_MAP.kp]) - cleanNumber(startPlayer[DATA_MAP.kp]);
+
+            // --- 2. Run DKP Formulas ---
+            // Formula for 'kvk only KP' (AL)
+            const calcKP = (t4kills * settings.t4mult) + (t5kills * settings.t5mult);
+            
+            // Formula for 'KVK DKP' (AM)
+            // We apply the bonus (AP) here, defaulting to 1 (100%)
+            const bonus = 1; // TODO: Add bonus/punishment to settings
+            const dkp = ((deads * settings.deadsMult) + calcKP) * bonus;
+
+            // Formula for 'Target DKP' (AN)
+            const targetDKP = startPower * (settings.targetPercent / 100);
+
+            // Formula for 'DKP % Complete' (AO)
+            const dkpPercent = (targetDKP === 0) ? 0 : Math.round((dkp / targetDKP) * 100);
+
+            // --- 3. Assemble Final Player Object ---
+            const finalPlayer = {
+                id: id,
+                name: startPlayer[DATA_MAP.name],
+                startPower: startPower,
+                powerChange: endPower - startPower,
+                troopPowerChange: endTroopPower - startTroopPower,
+                t1kills: t1kills,
+                t2kills: t2kills,
+                t3kills: t3kills,
+                t4kills: t4kills,
+                t5kills: t5kills,
+                t4t5Kills: t4kills + t5kills,
+                deads: deads,
+                rawKP: rawKP,
+                calcKP: calcKP, // Our formula-based KP (AL)
+                dkp: dkp, // Our formula-based DKP (AM)
+                targetDKP: targetDKP, // (AN)
+                dkpPercent: dkpPercent // (AO)
+            };
+            calculatedData.push(finalPlayer);
+
+        } catch (e) {
+            console.error(`Failed to process player ${id}: ${e.message}`);
+            // Don't stop the whole process, just skip this player
         }
     }
 
-    const calculatedData = [];
-    
-    // 2. Loop through the *end* scan (as it's the most current roster)
-    for (const endPlayer of endScanData) {
-        const id = endPlayer[DATA_MAP.id];
-        const startPlayer = startScanMap.get(id);
-
-        // If player isn't in start scan, treat start data as 0
-        const getStartStat = (key) => startPlayer ? cleanNumber(startPlayer[DATA_MAP[key]]) : 0;
-
-        // 3. Get "Before" and "After" stats
-        const startStats = {
-            power: getStartStat('power'),
-            troopPower: getStartStat('troopPower'),
-            t1: getStartStat('t1kills'),
-            t2: getStartStat('t2kills'),
-            t3: getStartStat('t3kills'),
-            t4: getStartStat('t4kills'),
-            t5: getStartStat('t5kills'),
-            deads: getStartStat('deads'),
-            kp: getStartStat('kp')
-        };
-        
-        const endStats = {
-            power: cleanNumber(endPlayer[DATA_MAP.power]),
-            troopPower: cleanNumber(endPlayer[DATA_MAP.troopPower]),
-            t1: cleanNumber(endPlayer[DATA_MAP.t1kills]),
-            t2: cleanNumber(endPlayer[DATA_MAP.t2kills]),
-            t3: cleanNumber(endPlayer[DATA_MAP.t3kills]),
-            t4: cleanNumber(endPlayer[DATA_MAP.t4kills]),
-            t5: cleanNumber(endPlayer[DATA_MAP.t5kills]),
-            deads: cleanNumber(endPlayer[DATA_MAP.deads]),
-            kp: cleanNumber(endPlayer[DATA_MAP.kp])
-        };
-
-        // 4. Calculate the "KvK Only" diffs
-        const kvkStats = {
-            id: id,
-            name: endPlayer[DATA_MAP.name] || 'Unknown',
-            startPower: startStats.power,
-            powerChange: endStats.power - startStats.power,
-            troopPowerChange: endStats.troopPower - startStats.troopPower,
-            t1kills: endStats.t1 - startStats.t1,
-            t2kills: endStats.t2 - startStats.t2,
-            t3kills: endStats.t3 - startStats.t3,
-            t4kills: endStats.t4 - startStats.t4,
-            t5kills: endStats.t5 - startStats.t5,
-            deads: endStats.deads - startStats.deads,
-            rawKP: endStats.kp - startStats.kp // Raw KP from scanner
-        };
-
-        // 5. Apply our DKP formulas
-        kvkStats.t4t5Kills = kvkStats.t4kills + kvkStats.t5kills;
-        kvkStats.calcKP = (kvkStats.t4kills * settings.t4mult) + (kvkStats.t5kills * settings.t5mult);
-        kvkStats.dkp = (kvkStats.deads * settings.deadsMult) + kvkStats.calcKP;
-        
-        // Target DKP
-        const targetPercent = settings.targetPercent / 100;
-        kvkStats.targetDKP = kvkStats.startPower * targetPercent;
-        
-        // DKP %
-        if (kvkStats.targetDKP > 0) {
-            kvkStats.dkpPercent = parseFloat(((kvkStats.dkp / kvkStats.targetDKP) * 100).toFixed(2));
-        } else {
-            kvkStats.dkpPercent = 0;
-        }
-
-        calculatedData.push(kvkStats);
-    }
-
-    setStatus(`Successfully calculated DKP for ${calculatedData.length} players.`);
     return calculatedData;
 }
 
 
-// --- Tab Rendering Functions ---
+// --- DOM Rendering Functions ---
 
+/**
+ * Main render function. Called after data is loaded/calculated.
+ * @param {Array<Object>} data The array of player data.
+ */
 function renderAllTabs(data) {
-    const fighterData = data.filter(p => p.calcKP > 0 && p.startPower >= 20000000)
-                           .sort((a, b) => b.dkpPercent - a.dkpPercent);
+    if (!data || data.length === 0) {
+        // Render empty state
+        dom.snapshotTableWrapper.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+        dom.playerGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+        dom.fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+        return;
+    }
+
+    // Process fighter data
+    const fighterData = data
+        .filter(p => p.calcKP > 0 && p.startPower >= 20000000)
+        .sort((a, b) => b.dkpPercent - a.dkpPercent);
     
+    // Render all tabs
     renderSnapshotTable(data);
     renderPlayerCards(data);
     renderFighterCards(fighterData);
-    renderComparison(); // Re-render comparison in case selected players are in new data
+    renderComparison(); // Renders the "empty" state for compare
     
-    // Clear the chart so it redraws on next click
-    const canvas = dom.chartCanvas;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    canvas._chartRendered = false; 
-
-    // Update search bars
+    // Enable search bars
     Object.values(dom.searchBars).forEach(bar => bar.disabled = false);
     
-    // Auto-navigate to the snapshot
-    activateTab('snapshot');
+    // Clear and mark chart for re-render
+    if (dom.chartCanvas) dom.chartCanvas._chartRendered = false;
+    if (dom.tabs.chart.content.classList.contains('active')) {
+        renderScatterChart(); // Re-render chart if it's the active tab
+    }
 }
-
+/**
+ * Renders the snapshot table.
+ * @param {Array<Object>} data The array of player data.
+ */
 function renderSnapshotTable(data) {
     // 1. Get stats for heatmap normalization
     const kps = data.map(p => p.calcKP);
@@ -324,33 +380,55 @@ function renderSnapshotTable(data) {
             <tbody>
     `;
 
-    // Use a string builder array for performance
-    const rows = data.map(player => {
+    // Use document fragments for performance
+    const fragment = document.createDocumentFragment();
+    
+    data.forEach(player => {
         const govId = player.id;
         const isChecked = selectedPlayers.includes(govId);
 
+        // Calculate heatmap opacity
         const kpOpacity = normalize(player.calcKP, max.kp_min, max.kp);
         const t4t5Opacity = normalize(player.t4t5Kills, max.t4t5_min, max.t4t5);
         const deadsOpacity = normalize(player.deads, max.deads_min, max.deads);
         const dkpOpacity = normalize(player.dkpPercent, max.dkp_min, max.dkp);
-
-        // This is the fix for the "Object object" bug. We are building the row with template literals.
-        return `
-            <tr data-id="${govId}" data-name="${player.name.toLowerCase()}">
-                <td class="compare-checkbox-cell">
-                    <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
-                </td>
-                <td title="${govId}">${player.name}</td>
-                <td data-heatmap-color="green" style="--heatmap-opacity: ${kpOpacity};">${formatShort(player.calcKP)}</td>
-                <td data-heatmap-color="green" style="--heatmap-opacity: ${t4t5Opacity};">${formatShort(player.t4t5Kills)}</td>
-                <td data-heatmap-color="red" style="--heatmap-opacity: ${deadsOpacity};">${formatNumber(player.deads)}</td>
-                <td data-heatmap-color="blue" style="--heatmap-opacity: ${dkpOpacity};">${player.dkpPercent}%</td>
-            </tr>
+        
+        const tr = document.createElement('tr');
+        tr.dataset.id = govId;
+        tr.dataset.name = player.name.toLowerCase();
+        
+        tr.innerHTML = `
+            <td class="compare-checkbox-cell">
+                <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
+            </td>
+            <td title="${govId}">${player.name}</td>
+            <td data-heatmap-color="green" style="--heatmap-opacity: ${kpOpacity};">${formatShort(player.calcKP)}</td>
+            <td data-heatmap-color="green" style="--heatmap-opacity: ${t4t5Opacity};">${formatShort(player.t4t5Kills)}</td>
+            <td data-heatmap-color="red" style="--heatmap-opacity: ${deadsOpacity};">${formatNumber(player.deads)}</td>
+            <td data-heatmap-color="blue" style="--heatmap-opacity: ${dkpOpacity};">${player.dkpPercent}%</td>
         `;
+        fragment.appendChild(tr);
     });
 
-    tableHTML += rows.join('') + '</tbody></table>';
-    dom.snapshotTableWrapper.innerHTML = tableHTML;
+    dom.snapshotTableWrapper.innerHTML = ''; // Clear previous content
+    const table = document.createElement('table');
+    table.className = 'snapshot-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th class="compare-checkbox-cell"></th>
+                <th data-sort="name">Name ${currentSort.column === 'name' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
+                <th data-sort="calcKP">KvK KP ${currentSort.column === 'calcKP' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
+                <th data-sort="t4t5Kills">T4/T5 Kills ${currentSort.column === 't4t5Kills' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
+                <th data-sort="deads">Deads ${currentSort.column === 'deads' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
+                <th data-sort="dkpPercent">DKP % ${currentSort.column === 'dkpPercent' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
+            </tr>
+        </thead>
+    `;
+    const tbody = document.createElement('tbody');
+    tbody.appendChild(fragment);
+    table.appendChild(tbody);
+    dom.snapshotTableWrapper.appendChild(table);
     
     // 4. Add event listeners
     dom.snapshotTableWrapper.querySelectorAll('.compare-checkbox').forEach(box => {
@@ -358,19 +436,20 @@ function renderSnapshotTable(data) {
     });
     dom.snapshotTableWrapper.querySelectorAll('th[data-sort]').forEach(th => {
         th.addEventListener('click', handleSort);
-        if (th.dataset.sort === currentSort.column) {
-            th.innerHTML += currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
-        }
     });
 }
 
+/**
+ * Renders the grid of player cards
+ * @param {Array<Object>} data The array of player data.
+ */
 function renderPlayerCards(data) {
-    // Use a string builder array for performance
     const cards = data.map(player => {
         const govId = player.id;
         const govName = player.name;
         const kvkKP = player.calcKP;
         const dkpPercent = player.dkpPercent;
+
         const isChecked = selectedPlayers.includes(govId);
 
         return `
@@ -394,17 +473,16 @@ function renderPlayerCards(data) {
     
     dom.playerGrid.innerHTML = cards.join('');
     
-    // Add event listeners
+    // Add event listeners to new checkboxes
     dom.playerGrid.querySelectorAll('.compare-checkbox').forEach(box => {
         box.addEventListener('change', handleCheck);
     });
 }
-/**
- * UNITY - KvK DKP Calculator
- * This is Part 3 of 3 of the main application script.
- * This part contains the remaining render functions, event listeners, and app initialization.
- */
 
+/**
+ * Renders the grid of "Fighter" cards
+ * @param {Array<Object>} data The array of filtered fighter data.
+ */
 function renderFighterCards(data) {
     if (data.length === 0) {
         dom.fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">No fighters found. (Min 20M Power & >0 KvK KP)</p>';
@@ -451,12 +529,26 @@ function renderFighterCards(data) {
     });
 }
 
+/**
+ * Renders the D3 scatter chart.
+ */
 function renderScatterChart() {
     // FIX: Only render if the tab is visible and not already rendered
     if (dom.chartCanvas._chartRendered) return;
 
     const chartData = allPlayerData.filter(p => p.calcKP > 0 || p.deads > 0);
-    if (chartData.length === 0) return;
+    if (chartData.length === 0) {
+        dom.chartContainer.innerHTML = '<p class="text-gray-500 text-center p-8">No data to display in chart.</p>';
+        return;
+    }
+    
+    // Ensure canvas is back
+    if (!document.getElementById('scatter-chart')) {
+        dom.chartContainer.innerHTML = '<canvas id="scatter-chart"></canvas><div id="chart-tooltip" class="hidden absolute p-2 bg-gray-800 text-white rounded-lg shadow-lg text-sm"></div>';
+        // Re-bind dom elements
+        dom.chartCanvas = document.getElementById('scatter-chart');
+        dom.chartTooltip = document.getElementById('chart-tooltip');
+    }
 
     const containerRect = dom.chartContainer.getBoundingClientRect();
     if (containerRect.width === 0 || containerRect.height === 0) {
@@ -506,10 +598,9 @@ function renderScatterChart() {
 
     // --- FIX: Smart Scales (95th Percentile) ---
     // This stops outliers from bunching up the data
-    const xMax = d3.quantile(plotData.map(d => d.x).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.x);
-    const yMax = d3.quantile(plotData.map(d => d.y).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.y);
-
-    const x = d3.scaleLinear()
+    const xMax = d3.quantile(plotData.map(d => d.x).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.x) || 1;
+    const yMax = d3.quantile(plotData.map(d => d.y).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.y) || 1;
+const x = d3.scaleLinear()
         .domain([0, xMax])
         .range([0, innerWidth]);
 
@@ -591,7 +682,14 @@ function renderScatterChart() {
     canvas._chartRendered = true;
 }
 
-function drawAxis(ctx, axis, x, y, width, height) {
+/**
+ * Helper to draw D3 axes on Canvas
+ * @param {CanvasRenderingContext2D} ctx The canvas context.
+ * @param {d3.Axis} axis The d3 axis generator.
+ * @param {number} x X position to draw at.
+ * @param {number} y Y position to draw at.
+ */
+function drawAxis(ctx, axis, x, y) {
     const tempContainer = d3.select(document.createElement("g"));
     tempContainer.call(axis);
     
@@ -611,7 +709,10 @@ function drawAxis(ctx, axis, x, y, width, height) {
 
     tempContainer.selectAll("text").each(function() {
         const text = d3.select(this);
-        ctx.textAlign = text.attr("text-anchor") === "middle" ? "center" : text.attr("text-anchor");
+        ctx.textAlign = text.attr("text-anchor") === "middle" ? "center" : "start";
+        if (text.attr("text-anchor") === "end") {
+             ctx.textAlign = "end";
+        }
         ctx.textBaseline = "middle";
         ctx.fillText(text.text(), parseFloat(text.attr("x")), parseFloat(text.attr("y")));
     });
@@ -619,6 +720,14 @@ function drawAxis(ctx, axis, x, y, width, height) {
     ctx.restore();
 }
 
+/**
+ * Sets up hover/tooltip for the chart
+ * @param {Array<Object>} plotData The data used for the plot.
+ * @param {d3.ScaleLinear} xScale The d3 x-scale.
+ * @param {d3.ScaleLinear} yScale The d3 y-scale.
+ * @param {HTMLCanvasElement} canvas The canvas element.
+ * @param {Object} margin The chart margins.
+ */
 function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
     const tooltip = dom.chartTooltip;
     
@@ -629,9 +738,11 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
 
     const onMouseMove = (e) => {
         const rect = canvas.getBoundingClientRect();
-        const [x, y] = d3.pointer(e, canvas); // D3 handles scaling
+        // d3.pointer correctly scales mouse position to canvas coordinates
+        const [x, y] = d3.pointer(e, canvas); 
         
-        const [target] = quadtree.find(x, y, 10);
+        // Find nearest point within 10px radius (scaled radius)
+        const [target] = quadtree.find(x, y, 10); 
 
         if (target) {
             canvas.style.cursor = 'pointer';
@@ -644,9 +755,21 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
             tooltip.classList.remove('hidden');
             tooltip.classList.add('show');
             
-            let tooltipX = x + margin.left + 15;
-            let tooltipY = y + margin.top + 15;
+            // Position tooltip relative to the *container* not the canvas element
+            // Use event.clientX/Y to get viewport coordinates, then adjust
+            let tooltipX = (e.clientX - rect.left) + 15;
+            let tooltipY = (e.clientY - rect.top) + 15;
             
+            // Prevent tooltip from going off the right edge
+            if (tooltipX + tooltip.offsetWidth > rect.width) {
+                tooltipX = (e.clientX - rect.left) - tooltip.offsetWidth - 15;
+            }
+            
+            // Prevent tooltip from going off the bottom edge
+            if (tooltipY + tooltip.offsetHeight > rect.height) {
+                tooltipY = (e.clientY - rect.top) - tooltip.offsetHeight - 15;
+            }
+
             tooltip.style.left = `${tooltipX}px`;
             tooltip.style.top = `${tooltipY}px`;
             
@@ -663,9 +786,12 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
     });
 }
 
+/**
+ * Redraws the chart on window resize.
+ */
 function handleResize() {
     const canvas = dom.chartCanvas;
-    if (canvas._chartRendered) {
+    if (canvas && canvas._chartRendered) {
         canvas._chartRendered = false; // Mark for redraw
         renderScatterChart(); // Redraw
     }
@@ -673,27 +799,39 @@ function handleResize() {
 
 
 // --- Data Sorting ---
+
+/**
+ * Handles a click on a sortable table header.
+ * @param {Event} e The click event.
+ */
 function handleSort(e) {
     const newColumn = e.target.dataset.sort;
     if (currentSort.column === newColumn) {
         currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
     } else {
         currentSort.column = newColumn;
-        currentSort.direction = 'desc';
+        currentSort.direction = 'desc'; // Default to descending
     }
     renderSnapshotTable(allPlayerData); // Re-render the table
 }
 
+/**
+ * Sorts the player data array in place based on currentSort state.
+ * @param {Array<Object>} data The array of player data.
+ */
 function sortData(data) {
     data.sort((a, b) => {
         let valA, valB;
+        
         if (currentSort.column === 'name') {
             valA = a.name.toLowerCase();
             valB = b.name.toLowerCase();
         } else {
+            // Use pre-calculated numeric fields
             valA = a[currentSort.column];
             valB = b[currentSort.column];
         }
+
         if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
         if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
         return 0;
@@ -702,6 +840,10 @@ function sortData(data) {
 
 
 // --- Search ---
+
+/**
+ * Attaches event listeners to all search bars.
+ */
 function setupSearch() {
     Object.keys(dom.searchBars).forEach(key => {
         if (dom.searchBars[key]) {
@@ -712,7 +854,14 @@ function setupSearch() {
         }
     });
 }
+
+/**
+ * Filters all data views based on a search query.
+ * @param {string} query The search query.
+ * @param {string} sourceTab The tab the search originated from.
+ */
 function filterViews(query, sourceTab) {
+    // Filter Snapshot Table
     const allRows = dom.snapshotTableWrapper.querySelectorAll('tbody tr');
     allRows.forEach(row => {
         const name = row.dataset.name;
@@ -720,6 +869,7 @@ function filterViews(query, sourceTab) {
         row.style.display = (name.includes(query) || id.includes(query)) ? '' : 'none';
     });
     
+    // Filter Player Cards
     const allCards = dom.playerGrid.querySelectorAll('.player-card');
     allCards.forEach(card => {
         const name = card.dataset.name;
@@ -727,6 +877,7 @@ function filterViews(query, sourceTab) {
         card.style.display = (name.includes(query) || id.includes(query)) ? 'block' : 'none';
     });
 
+    // Filter Fighter Cards
     const allFighterCards = dom.fighterGrid.querySelectorAll('.player-card');
     allFighterCards.forEach(card => {
         const name = card.dataset.name;
@@ -734,6 +885,7 @@ function filterViews(query, sourceTab) {
         card.style.display = (name.includes(query) || id.includes(query)) ? 'block' : 'none';
     });
 
+    // Sync other search bars
     Object.keys(dom.searchBars).forEach(key => {
         if (key !== sourceTab && dom.searchBars[key]) {
             dom.searchBars[key].value = query;
@@ -743,13 +895,18 @@ function filterViews(query, sourceTab) {
 
 
 // --- Player Comparison ---
+
+/**
+ * Handles checking/unchecking a player compare checkbox.
+ * @param {Event} e The change event.
+ */
 function handleCheck(e) {
     const id = e.target.dataset.id;
     if (e.target.checked) {
         if (selectedPlayers.length < 3) {
             selectedPlayers.push(id);
         } else {
-            e.target.checked = false;
+            e.target.checked = false; // Don't allow more than 3
         }
     } else {
         selectedPlayers = selectedPlayers.filter(pId => pId !== id);
@@ -757,12 +914,19 @@ function handleCheck(e) {
     updateCompareState();
 }
 
+/**
+ * Updates the state of all compare checkboxes and the compare tab.
+ */
 function updateCompareState() {
     dom.compareBtn.textContent = `Compare (${selectedPlayers.length})`;
+
+    // Sync checkboxes across all tabs
     const allCheckboxes = document.querySelectorAll('.compare-checkbox');
     allCheckboxes.forEach(box => {
         box.checked = selectedPlayers.includes(box.dataset.id);
     });
+
+    // Disable/enable checkboxes
     if (selectedPlayers.length >= 3) {
         allCheckboxes.forEach(box => {
             if (!box.checked) box.disabled = true;
@@ -770,25 +934,22 @@ function updateCompareState() {
     } else {
         allCheckboxes.forEach(box => box.disabled = false);
     }
+    
     renderComparison();
 }
 
-dom.clearBtn.addEventListener('click', () => {
-    selectedPlayers = [];
-    document.querySelectorAll('.compare-checkbox').forEach(box => {
-        box.checked = false;
-    });
-    updateCompareState();
-});
-
+/**
+ * Renders the side-by-side comparison table.
+ */
 function renderComparison() {
     if (selectedPlayers.length === 0) {
-        dom.compareWrapper.innerHTML = '<p class="text-gray-500 text-center p-8">Select players to compare.</p>';
+        dom.compareWrapper.innerHTML = '<p class="text-gray-500 text-center p-8">Select players from any tab to compare them here.</p>';
         return;
     }
 
     const playersToCompare = allPlayerData.filter(p => selectedPlayers.includes(p.id));
     
+    // Define metrics to compare: [Label, key or function, higherIsBetter?, format]
     const metrics = [
         ['Start Power', 'startPower', true, 'short'],
         ['Power +/-', 'powerChange', true, 'number'],
@@ -799,7 +960,8 @@ function renderComparison() {
         ['T1-T3 Kills', (p) => p.t1kills + p.t2kills + p.t3kills, true, 'short'],
         ['DKP % Complete', 'dkpPercent', true, 'percent'],
         ['Total DKP', 'dkp', true, 'short'],
-        ['Target DK', 'targetDKP', true, 'short']
+        ['Target DKP', 'targetDKP', true, 'short'],
+        ['Raw Scan KP', 'rawKP', true, 'short']
     ];
 
     let tableHTML = '<table class="compare-table"><thead><tr><th>Metric</th>';
@@ -822,16 +984,19 @@ function renderComparison() {
             
             values.push({ val, formatted });
         });
-
+// Find winner/loser
         const numericVals = values.map(v => v.val);
         const targetVal = higherIsBetter ? Math.max(...numericVals) : Math.min(...numericVals);
         const worstVal = higherIsBetter ? Math.min(...numericVals) : Math.max(...numericVals);
 
         values.forEach(v => {
             let cellClass = '';
-            if (v.val === targetVal) cellClass = 'stat-winner';
-            else if (v.val === worstVal && values.length > 1 && targetVal !== worstVal) cellClass = 'stat-loser';
-            row += `<td class="${cellClass}">${v.formatted}</td>`;
+            // Only assign winner/loser if there's more than one player and they aren't the same value
+            if (values.length > 1 && targetVal !== worstVal) {
+                if (v.val === targetVal) cellClass = 'stat-winner';
+                else if (v.val === worstVal) cellClass = 'stat-loser';
+            }
+            row += `<td class="${cellClass}">${v.formatted || '0'}</td>`;
         });
         
         for (let i = 0; i < 3 - playersToCompare.length; i++) row += '<td>-</td>';
@@ -845,29 +1010,52 @@ function renderComparison() {
 
 
 // --- Tab Switching ---
+
+/**
+ * Activates a specific tab and deactivates others.
+ * @param {string | null} tabName The key of the tab to activate (or null to hide all).
+ */
 function activateTab(tabName) {
+    let tabWasActivated = false;
     Object.keys(dom.tabs).forEach(key => {
         const isTarget = key === tabName;
         dom.tabs[key].btn.classList.toggle('active', isTarget);
         dom.tabs[key].content.classList.toggle('active', isTarget);
 
-        if (key === 'chart' && isTarget && allPlayerData.length > 0) {
-            renderScatterChart();
-        }
-        if (key === 'kdCompare' && isTarget) {
-            populateKdCompareDropdowns();
+        if (isTarget) {
+            tabWasActivated = true;
+            // On-demand rendering for chart
+            if (key === 'chart' && allPlayerData.length > 0) {
+                renderScatterChart();
+            }
+            // On-demand population for kd compare dropdowns
+            if (key === 'kdCompare') {
+                populateKdCompareDropdowns();
+            }
         }
     });
+    if (!tabWasActivated) {
+         console.warn(`Attempted to activate unknown tab: ${tabName}`);
+    }
 }
 
 
 // --- Local Storage Profile Management ---
-const DB_KEY = 'UNITY_DKP_PROFILES';
+const DB_KEY = 'UNITY_DKP_PROFILES_V2'; // Use a new key for V2
 
+/**
+ * Gets all saved profiles from localStorage.
+ * @returns {Object} An object where keys are profile names.
+ */
 function getSavedProfiles() {
     return JSON.parse(localStorage.getItem(DB_KEY) || '{}');
 }
 
+/**
+ * Saves a single profile to localStorage.
+ * @param {Object} profile The profile object to save.
+ * @returns {boolean} True on success, false on failure.
+ */
 function saveProfile(profile) {
     try {
         const profiles = getSavedProfiles();
@@ -876,23 +1064,36 @@ function saveProfile(profile) {
         return true;
     } catch (e) {
         console.error("Error saving to localStorage", e);
-        setStatus("Error: Could not save profile. Storage may be full.", true);
+        setStatus("Error: Could not save profile. Browser storage may be full.", true);
         return false;
     }
 }
 
+/**
+ * Loads a single profile from localStorage by name.
+ * @param {string} profileName The name of the profile to load.
+ * @returns {Object | null} The profile object or null if not found.
+ */
 function loadProfile(profileName) {
     const profiles = getSavedProfiles();
     return profiles[profileName] || null;
 }
 
+/**
+ * Deletes a single profile from localStorage by name.
+ * @param {string} profileName The name of the profile to delete.
+ */
 function deleteProfile(profileName) {
     const profiles = getSavedProfiles();
     delete profiles[profileName];
     localStorage.setItem(DB_KEY, JSON.stringify(profiles));
-    populateProfileDropdown();
+    populateProfileDropdown(); // Refresh dropdown
+    populateKdCompareDropdowns(); // Refresh compare dropdown
 }
 
+/**
+ * Populates the "Load Profile" dropdown list.
+ */
 function populateProfileDropdown() {
     const profiles = getSavedProfiles();
     const profileNames = Object.keys(profiles);
@@ -902,11 +1103,17 @@ function populateProfileDropdown() {
         return;
     }
 
-    dom.profileSelect.innerHTML = profileNames.map(name => `<option value="${name}">${name}</option>`).join('');
+    dom.profileSelect.innerHTML = profileNames
+        .map(name => `<option value="${name}">${name}</option>`)
+        .join('');
 }
 
 
 // --- Kingdom Compare Logic ---
+
+/**
+ * Populates the two dropdowns in the "Kd Compare" tab.
+ */
 function populateKdCompareDropdowns() {
     const profiles = getSavedProfiles();
     const profileNames = Object.keys(profiles);
@@ -922,6 +1129,9 @@ function populateKdCompareDropdowns() {
     dom.kdProfileSelectB.innerHTML = `<option value="">-- Select Profile B --</option>${options}`;
 }
 
+/**
+ * Runs the kingdom-to-kingdom comparison.
+ */
 function runKdCompare() {
     const profileNameA = dom.kdProfileSelectA.value;
     const profileNameB = dom.kdProfileSelectB.value;
@@ -935,7 +1145,7 @@ function runKdCompare() {
     const profileB = loadProfile(profileNameB);
 
     if (!profileA || !profileB) {
-        setStatus("Error: Could not load one or more profiles.", true);
+        setStatus("Error: Could not load one or more profiles for comparison.", true);
         return;
     }
 
@@ -947,6 +1157,11 @@ function runKdCompare() {
     renderKdCompareCard(profileNameA, summaryA, profileNameB, summaryB);
 }
 
+/**
+ * Calculates summary stats for an entire profile's player data.
+ * @param {Array<Object>} playerData The array of player data.
+ * @returns {Object} An object with summary statistics.
+ */
 function calculateProfileSummary(playerData) {
     const summary = {
         governors: playerData.length,
@@ -977,6 +1192,13 @@ function calculateProfileSummary(playerData) {
     return summary;
 }
 
+/**
+ * Renders the "Baseball Card" for the Kd Compare tab.
+ * @param {string} nameA Name of profile A.
+ * @param {Object} statsA Summary stats for profile A.
+ * @param {string} nameB Name of profile B.
+ * @param {Object} statsB Summary stats for profile B.
+ */
 function renderKdCompareCard(nameA, statsA, nameB, statsB) {
     const metrics = [
         { title: '# Governors', key: 'governors', higherIsBetter: true, format: 'number' },
@@ -987,7 +1209,7 @@ function renderKdCompareCard(nameA, statsA, nameB, statsB) {
         { title: 'Total T4 Kills', key: 'totalT4Kills', higherIsBetter: true, format: 'short' },
         { title: 'Total T5 Kills', key: 'totalT5Kills', higherIsBetter: true, format: 'short' },
         { title: 'Total Kills', key: 'totalT4T5Kills', higherIsBetter: true, format: 'short' },
-        { title: 'Total Deads', key: 'totalDeads', higherIsBetter: false, format: 'number' },
+        { title: 'Total Deads', key: 'totalDeads', higherIsBetter: false, format: 'number' }, // Lower is better
         { title: 'Avg. DKP %', key: 'avgDKPPercent', higherIsBetter: true, format: 'percent' }
     ];
 
@@ -1045,11 +1267,19 @@ function renderKdCompareCard(nameA, statsA, nameB, statsB) {
 
 // --- Event Listeners & App Initialization ---
 
+/**
+ * Sets the main status message for the user.
+ * @param {string} message The message to display.
+ * @param {boolean} isError True if the message is an error.
+ */
 function setStatus(message, isError = false) {
     dom.loadStatus.textContent = message;
-    dom.loadStatus.style.color = isError ? '#dc2626' : '#4b5563';
+    dom.loadStatus.style.color = isError ? '#dc2626' : '#4b5563'; // red-600 or gray-600
 }
 
+/**
+ * Attaches all primary event listeners to the DOM.
+ */
 function initListeners() {
     // Tab Listeners
     Object.keys(dom.tabs).forEach(key => {
@@ -1071,14 +1301,20 @@ function initListeners() {
     dom.runKdCompareBtn.addEventListener('click', runKdCompare);
 }
 
+/**
+ * Handles the "Save & Run Calculation" button click.
+ */
 async function handleSaveAndRun() {
     setStatus("Processing...");
+    dom.runDKPBtn.disabled = true;
+    
     const profileName = dom.profileNameInput.value.trim();
     const startFile = dom.startScanFile.files[0];
     const endFile = dom.endScanFile.files[0];
 
     if (!profileName || !startFile || !endFile) {
         setStatus("Error: Profile Name, Start Scan, and End Scan files are all required.", true);
+        dom.runDKPBtn.disabled = false;
         return;
     }
 
@@ -1090,7 +1326,8 @@ async function handleSaveAndRun() {
         const endScanData = parseCSV(endScanText);
         
         if (!startScanData || !endScanData) {
-            setStatus("Error: One or more CSV files failed to parse. Check file format.", true);
+            // parseCSV will have already set the error status
+            dom.runDKPBtn.disabled = false;
             return;
         }
 
@@ -1107,8 +1344,8 @@ async function handleSaveAndRun() {
         // Save the *raw data* and *settings* to the profile
         const profile = {
             name: profileName,
-            startScanRaw: startScanText,
-            endScanRaw: endScanText,
+            startScanRaw: startScanText, // We save the raw text
+            endScanRaw: endScanText,     // We save the raw text
             settings: settings,
             data: calculatedData, // Save the calculated data as well
             timestamp: new Date().toISOString()
@@ -1121,16 +1358,22 @@ async function handleSaveAndRun() {
             populateProfileDropdown();
             dom.profileSelect.value = profileName;
             renderAllTabs(allPlayerData);
+            activateTab('snapshot'); // Show the results
         } else {
             // Error handled by saveProfile
         }
         
     } catch (e) {
         console.error("Error running DKP:", e);
-        setStatus("Error: Failed to read files or run calculation.", true);
+        setStatus(`Error: Failed to read files or run calculation. (${e.message})`, true);
     }
+    
+    dom.runDKPBtn.disabled = false;
 }
 
+/**
+ * Handles the "Load Profile" button click.
+ */
 function handleLoadProfile() {
     const profileName = dom.profileSelect.value;
     if (!profileName) {
@@ -1156,11 +1399,15 @@ function handleLoadProfile() {
         setStatus(`Loaded profile: ${profile.name}. (Last saved: ${new Date(profile.timestamp).toLocaleString()})`);
 
         renderAllTabs(allPlayerData);
+        activateTab('snapshot'); // Show the results
     } else {
         setStatus(`Error: Could not find profile "${profileName}".`, true);
     }
 }
 
+/**
+ * Handles the "Delete Profile" button click.
+ */
 function handleDeleteProfile() {
     const profileName = dom.profileSelect.value;
     if (!profileName) {
@@ -1176,14 +1423,16 @@ function handleDeleteProfile() {
             allPlayerData = [];
             currentProfileName = null;
             renderAllTabs([]);
+            activateTab('manageData');
         }
     }
 }
 
 // --- App Entry Point ---
 document.addEventListener('DOMContentLoaded', () => {
+    // This is the main entry point for the application.
     initListeners();
     populateProfileDropdown();
-    activateTab('manageData');
+    activateTab('manageData'); // Start on the "Manage Data" tab
     setStatus("Welcome to UNITY. Please create a new profile or load an existing one.");
 });
