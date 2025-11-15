@@ -439,6 +439,11 @@ function renderSnapshotTable() {
         return;
     }
     
+    // --- PERFORMANCE OPTIMIZATION ---
+    // Instead of creating thousands of DOM elements one by one,
+    // we will build the entire table as a single HTML string.
+    // This is dramatically faster.
+
     const kps = calculatedPlayerData.map(p => p.numeric_kvk_kp);
     const deads = calculatedPlayerData.map(p => p.numeric_deads);
     const dkps = calculatedPlayerData.map(p => p.numeric_dkp_percent);
@@ -453,12 +458,9 @@ function renderSnapshotTable() {
 
     sortData(calculatedPlayerData);
     
-    snapshotTableWrapper.innerHTML = '';
-    const table = document.createElement('table');
-    table.className = 'snapshot-table';
+    let tableHTML = '<table class="snapshot-table">';
     
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
+    // Build Headers
     const headers = [
         { text: '', sort: null, class: 'compare-checkbox-cell' },
         { text: 'Name', sort: 'Governor Name', class: '' },
@@ -468,75 +470,58 @@ function renderSnapshotTable() {
         { text: 'DKP %', sort: 'numeric_dkp_percent', class: '' }
     ];
     
+    let headerHTML = '<thead><tr>';
     headers.forEach(h => {
-        const th = document.createElement('th');
-        th.textContent = h.text;
-        if (h.class) th.className = h.class;
-        if (h.sort) {
-            th.dataset.sort = h.sort;
-            th.addEventListener('click', handleSort);
-            if (h.sort === currentSort.column) {
-                th.innerHTML += currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
-            }
+        let sortIndicator = '';
+        if (h.sort === currentSort.column) {
+            sortIndicator = currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
         }
-        headerRow.appendChild(th);
+        headerHTML += `<th class="${h.class || ''}" ${h.sort ? `data-sort="${h.sort}"` : ''}>${h.text}${sortIndicator}</th>`;
     });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
+    headerHTML += '</tr></thead>';
+    tableHTML += headerHTML;
 
-    const tbody = document.createElement('tbody');
+    // Build Body
+    let bodyHTML = '<tbody>';
     calculatedPlayerData.forEach(player => {
-        const tr = document.createElement('tr');
         const govId = player['Governor ID'];
-        tr.dataset.id = govId;
-        tr.dataset.name = player['Governor Name'].toLowerCase();
+        const isChecked = selectedPlayers.includes(govId);
 
-        const tdCheck = document.createElement('td');
-        tdCheck.className = 'compare-checkbox-cell';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'compare-checkbox';
-        checkbox.dataset.id = govId;
-        checkbox.checked = selectedPlayers.includes(govId);
-        checkbox.title = 'Select to Compare';
-        checkbox.addEventListener('change', handleCheck);
-        tdCheck.appendChild(checkbox);
-        tr.appendChild(tdCheck);
+        // Calculate heatmap opacity
+        const kpOpacity = normalize(player.numeric_kvk_kp, max.kp_min, max.kp);
+        const t4t5Opacity = normalize(player.numeric_t4t5, max.t4t5_min, max.t4t5);
+        const deadsOpacity = normalize(player.numeric_deads, max.deads_min, max.deads);
+        const dkpOpacity = normalize(player.numeric_dkp_percent, max.dkp_min, max.dkp);
 
-        const tdName = document.createElement('td');
-        tdName.textContent = player['Governor Name'];
-        tdName.title = govId;
-        tr.appendChild(tdName);
-
-        const tdKP = document.createElement('td');
-        tdKP.textContent = formatShort(player.numeric_kvk_kp);
-        tdKP.dataset.heatmapColor = 'green';
-        tdKP.style = `--heatmap-opacity: ${normalize(player.numeric_kvk_kp, max.kp_min, max.kp)}`;
-        tr.appendChild(tdKP);
-
-        const tdT4T5 = document.createElement('td');
-        tdT4T5.textContent = formatShort(player.numeric_t4t5);
-        tdT4T5.dataset.heatmapColor = 'green';
-        tdT4T5.style = `--heatmap-opacity: ${normalize(player.numeric_t4t5, max.t4t5_min, max.t4t5)}`;
-        tr.appendChild(tdT4T5);
-
-        const tdDeads = document.createElement('td');
-        tdDeads.textContent = formatNumber(player.numeric_deads);
-        tdDeads.dataset.heatmapColor = 'red';
-        tdDeads.style = `--heatmap-opacity: ${normalize(player.numeric_deads, max.deads_min, max.deads)}`;
-        tr.appendChild(tdDeads);
-
-        const tdDKP = document.createElement('td');
-        tdDKP.textContent = `${player['DKP % Complete']}%`;
-        tdDKP.dataset.heatmapColor = 'blue';
-        tdDKP.style = `--heatmap-opacity: ${normalize(player.numeric_dkp_percent, max.dkp_min, max.dkp)}`;
-        tr.appendChild(tdDKP);
-
-        tbody.appendChild(tr);
+        bodyHTML += `
+            <tr data-id="${govId}" data-name="${player['Governor Name'].toLowerCase()}">
+                <td class="compare-checkbox-cell">
+                    <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
+                </td>
+                <td title="${govId}">${player['Governor Name']}</td>
+                <td data-heatmap-color="green" style="--heatmap-opacity: ${kpOpacity};">${formatShort(player.numeric_kvk_kp)}</td>
+                <td data-heatmap-color="green" style="--heatmap-opacity: ${t4t5Opacity};">${formatShort(player.numeric_t4t5)}</td>
+                <td data-heatmap-color="red" style="--heatmap-opacity: ${deadsOpacity};">${formatNumber(player.numeric_deads)}</td>
+                <td data-heatmap-color="blue" style="--heatmap-opacity: ${dkpOpacity};">${player['DKP % Complete']}%</td>
+            </tr>
+        `;
     });
     
-    table.appendChild(tbody);
-    snapshotTableWrapper.appendChild(table);
+    bodyHTML += '</tbody>';
+    tableHTML += bodyHTML;
+    tableHTML += '</table>';
+
+    // --- END PERFORMANCE OPTIMIZATION ---
+    // Now we set the HTML *one time*
+    snapshotTableWrapper.innerHTML = tableHTML;
+    
+    // Add event listeners after the table is in the DOM
+    snapshotTableWrapper.querySelectorAll('.compare-checkbox').forEach(box => {
+        box.addEventListener('change', handleCheck);
+    });
+    snapshotTableWrapper.querySelectorAll('th[data-sort]').forEach(th => {
+        th.addEventListener('click', handleSort);
+    });
 }
 
 function renderPlayerCards() {
