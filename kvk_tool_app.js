@@ -247,16 +247,19 @@ async function runDkpCalculation() {
     const startFile = startScanInput.files[0];
     const endFile = endScanInput.files[0];
 
+    // Check if we are re-saving a profile. If so, file uploads are optional.
     if (!startFile || !endFile) {
         if (dkpProfiles[profileName]) {
             loadStatus.textContent = "Re-calculating with new settings...";
         } else {
+            // This is a new profile and files are missing
             loadStatus.textContent = "Error: Please select both a Start Scan and End Scan file.";
             return;
         }
     }
 
     try {
+        // 1. Get new settings from inputs
         const currentSettings = {
             t4Mult: parseFloat(settingsInputs.t4Mult.value) || 0,
             t5Mult: parseFloat(settingsInputs.t5Mult.value) || 0,
@@ -264,44 +267,52 @@ async function runDkpCalculation() {
             targetPercent: parseFloat(settingsInputs.targetPercent.value) || 0,
         };
         
+        // 2. Get scan data
         let startScanData, endScanData;
         
         if (startFile && endFile) {
+            // New files were uploaded
             const startScanText = await readFileAsText(startFile);
             const endScanText = await readFileAsText(endFile);
             startScanData = parseCSV(startScanText);
             endScanData = parseCSV(endScanText);
             
+            // Save the raw text to the profile for re-calculation
             dkpProfiles[profileName] = {
-                ...dkpProfiles[profileName],
+                ...dkpProfiles[profileName], // Keep any old data
                 startScanRaw: startScanText,
                 endScanRaw: endScanText,
             };
 
         } else if (dkpProfiles[profileName]) {
+            // No new files, re-calculate from saved raw data
             startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
             endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
         } else {
             throw new Error("No scan data found to calculate.");
         }
         
+        // 3. Create a fast lookup map for the "End Scan" data
         const endScanMap = new Map();
         endScanData.forEach(player => {
             endScanMap.set(player['Governor ID'], player);
         });
         
+        // 4. Calculate all player data
         calculateAllPlayerData(startScanData, endScanMap, currentSettings);
         
+        // 5. Save the *results* and *settings* to the profile
         dkpProfiles[profileName] = {
-            ...dkpProfiles[profileName],
+            ...dkpProfiles[profileName], // Keep raw scan data
             calculatedData: calculatedPlayerData,
             dkpSettings: currentSettings
         };
         saveProfilesToStorage();
         
+        // 6. Update UI
         currentProfileName = profileName;
         updateProfileDropdown();
-        profileSelect.value = profileName;
+        profileSelect.value = profileName; // Select the new profile
         
         processFighterData();
         renderAllTabs();
@@ -309,7 +320,7 @@ async function runDkpCalculation() {
         Object.values(searchBars).forEach(bar => bar.disabled = false);
 
         loadStatus.textContent = `Successfully saved and calculated DKP for ${profileName}.`;
-        activateTab('snapshot');
+        activateTab('snapshot'); // Show the results!
 
     } catch (err) {
         console.error("Error during DKP calculation:", err);
@@ -317,16 +328,22 @@ async function runDkpCalculation() {
     }
 }
 
+
+/**
+ * NEW: This function calculates all DKP stats based on the two scans
+ */
 function calculateAllPlayerData(startData, endMap, settings) {
     calculatedPlayerData = startData.map(startPlayer => {
         const govId = startPlayer['Governor ID'];
         const endPlayer = endMap.get(govId);
 
+        // --- Calculate Stats from Before/After ---
         const startPower = cleanNumber(startPlayer['Power']);
         let endPower = 0;
         let endTroopPower = 0;
         let endT1 = 0, endT2 = 0, endT3 = 0, endT4 = 0, endT5 = 0, endDeads = 0;
 
+        // If player isn't in the end scan, they get 0 for all end stats
         if (endPlayer) {
             endPower = cleanNumber(endPlayer['Power']);
             endTroopPower = cleanNumber(endPlayer['Troop Power']);
@@ -346,6 +363,7 @@ function calculateAllPlayerData(startData, endMap, settings) {
         const startT5 = cleanNumber(startPlayer['T5 Kills']);
         const startDeads = cleanNumber(startPlayer['Deads']);
         
+        // These are the KvK-only stats
         const numeric_t1 = Math.max(0, endT1 - startT1);
         const numeric_t2 = Math.max(0, endT2 - startT2);
         const numeric_t3 = Math.max(0, endT3 - startT3);
@@ -356,10 +374,13 @@ function calculateAllPlayerData(startData, endMap, settings) {
         const numeric_troop_power_plus = endTroopPower - startTroopPower;
         const numeric_t4t5 = numeric_t4 + numeric_t5;
 
+        // --- Calculate DKP Stats from Settings ---
         const { t4Mult, t5Mult, deadsMult, targetPercent } = settings;
         
         const numeric_kvk_kp = (numeric_t4 * t4Mult) + (numeric_t5 * t5Mult);
+        
         const numeric_kvk_dkp = (numeric_deads * deadsMult) + numeric_kvk_kp;
+        
         const numeric_target_dkp = startPower * (targetPercent / 100);
         
         let numeric_dkp_percent = 0;
@@ -367,6 +388,7 @@ function calculateAllPlayerData(startData, endMap, settings) {
             numeric_dkp_percent = (numeric_kvk_dkp / numeric_target_dkp) * 100;
         }
         
+        // Return a new object matching the structure our tabs expect
         return {
             'Governor ID': govId,
             'Governor Name': startPlayer['Governor Name'],
@@ -385,6 +407,7 @@ function calculateAllPlayerData(startData, endMap, settings) {
             'Target DKP': numeric_target_dkp,
             'DKP % Complete': numeric_dkp_percent.toFixed(0),
             
+            // Keep pre-calculated numerics for sorting
             numeric_kvk_kp: numeric_kvk_kp,
             numeric_deads: numeric_deads,
             numeric_dkp_percent: numeric_dkp_percent,
@@ -393,6 +416,7 @@ function calculateAllPlayerData(startData, endMap, settings) {
         };
     });
 }
+
 
 function processFighterData() {
     fighterData = calculatedPlayerData
