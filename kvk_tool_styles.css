@@ -1,5 +1,6 @@
 body {
-    font-family: 'Inter', sans-serif;
+    /* FONT CHANGE: Swapped Inter for Roboto */
+    font-family: 'Roboto', sans-serif;
     background-color: #f1f5f9; /* slate-100 */
 }
 /* NEW: Style for the file inputs */
