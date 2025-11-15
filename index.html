@@ -27,7 +27,6 @@
 
         <!-- Tab Navigation -->
         <div class="flex flex-wrap border-b border-gray-300">
-            <!-- NEW TABS -->
             <button id="btn-manage-data" class="tab-btn">1. Manage Data</button>
             <button id="btn-settings" class="tab-btn">2. DKP Settings</button>
             <!-- OUTPUT TABS -->
@@ -36,9 +35,11 @@
             <button id="btn-fighters" class="tab-btn">Fighters</button>
             <button id="btn-compare" class="tab-btn">Compare (0)</button>
             <button id="btn-chart" class="tab-btn">Chart</button>
+            <!-- NEW TAB -->
+            <button id="btn-kd-compare" class="tab-btn">Kd Compare</button>
         </div>
 
-        <!-- NEW: Manage Data Tab -->
+        <!-- Manage Data Tab -->
         <div id="content-manage-data" class="tab-content active">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -85,7 +86,7 @@
             </div>
         </div>
 
-        <!-- UPDATED: Settings Tab -->
+        <!-- Settings Tab -->
         <div id="content-settings" class="tab-content">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">DKP Settings</h2>
             <p class="text-gray-600 mb-6">Adjust the multipliers below. These settings are saved *per-profile*. After changing, you must click "Save & Run" on the "Manage Data" tab to apply them.</p>
@@ -191,6 +192,35 @@
             <div class="chart-container">
                 <canvas id="scatter-chart"></canvas>
                 <div id="chart-tooltip" class="hidden absolute p-2 bg-gray-800 text-white rounded-lg shadow-lg text-sm"></div>
+            </div>
+        </div>
+
+        <!-- NEW: Kingdom Compare Tab -->
+        <div id="content-kd-compare" class="tab-content">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Compare Kingdom Profiles</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border">
+                <div>
+                    <label for="kd-profile-select-a" class="block text-sm font-medium text-gray-700">Select Profile A</label>
+                    <select id="kd-profile-select-a" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                        <option value="">-- Select Profile --</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="kd-profile-select-b" class="block text-sm font-medium text-gray-700">Select Profile B</label>
+                    <select id="kd-profile-select-b" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                        <option value="">-- Select Profile --</option>
+                    </select>
+                </div>
+                <div class="md:self-end">
+                    <button id="run-kd-compare-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-lg">
+                        Compare
+                    </button>
+                </div>
+            </div>
+
+            <!-- Result area for the baseball card -->
+            <div id="kd-compare-result" class="mt-6">
+                <p class="text-gray-500 text-center p-8">Select two profiles and click "Compare" to see the results.</p>
             </div>
         </div>
 
