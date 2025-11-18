@@ -1,180 +1,272 @@
 /**
  * UNITY - KvK DKP Calculator
- * Part 1: Setup, Global State, DOM Cache, Utilities, and Parsing
+ * Part 2: Profile Management, DKP Calculation Logic
  */
 
-// --- App State ---
-let calculatedPlayerData = []; // Processed data for the *currently loaded* profile
-let fighterData = [];
-// Removed selectedPlayers as per simplification
-let currentSort = { column: 'numeric_dkp_percent', direction: 'desc' };
-let dkpProfiles = {}; // Object to hold all saved profiles
-let currentProfileName = null; // The name of the profile currently loaded
+// --- Local Storage & Profile Management ---
 
-// --- DOM Element Refs ---
-// We use a global 'dom' object so other scripts can access these
-window.dom = {
-    loadStatus: document.getElementById('load-status'),
-    runDkpBtn: document.getElementById('run-dkp-btn'),
-    loadProfileBtn: document.getElementById('load-profile-btn'),
-    deleteProfileBtn: document.getElementById('delete-profile-btn'),
-    profileSelect: document.getElementById('profile-select'),
-    profileNameInput: document.getElementById('profile-name'),
-
-    // Scan Data File Inputs
-    startScanInput: document.getElementById('start-scan-file'),
-    endScanInput: document.getElementById('end-scan-file'),
-
-    tabs: {
-        manageData: { btn: document.getElementById('btn-manage-data'), content: document.getElementById('content-manage-data') },
-        settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
-        snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
-        playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
-        fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
-        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-        kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
-    },
-
-    searchBars: {
-        snapshot: document.getElementById('search-bar-snapshot'),
-        playerCards: document.getElementById('search-bar-player-cards'),
-        fighters: document.getElementById('search-bar-fighters')
-    },
-
-    // DKP Settings Inputs
-    settingsInputs: {
-        t4Mult: document.getElementById('setting-t4-mult'),
-        t5Mult: document.getElementById('setting-t5-mult'),
-        deadsMult: document.getElementById('setting-deads-mult'),
-        targetPercent: document.getElementById('setting-target-percent')
-    },
-
-    playerGrid: document.getElementById('player-grid'),
-    fighterGrid: document.getElementById('fighter-grid'),
-    snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
-
-    // Kingdom Compare DOM Refs
-    kdProfileSelectA: document.getElementById('kd-profile-select-a'),
-    kdProfileSelectB: document.getElementById('kd-profile-select-b'),
-    runKdCompareBtn: document.getElementById('run-kd-compare-btn'),
-    kdCompareResult: document.getElementById('kd-compare-result'),
-
-    // Chart Refs
-    chartContainer: document.querySelector('.chart-container'),
-    chartCanvas: document.getElementById('scatter-chart'),
-    chartTooltip: document.getElementById('chart-tooltip')
-};
-
-
-// --- Utility Functions ---
-
-function cleanNumber(str) {
-    if (typeof str !== 'string') return 0;
-    return parseInt(str.replace(/,/g, '').replace(/"/g, ''), 10) || 0;
+function loadProfilesFromStorage() {
+    const profiles = localStorage.getItem('dkpProfiles');
+    dkpProfiles = profiles ? JSON.parse(profiles) : {};
+    updateProfileDropdown();
+    populateKdCompareDropdowns(); 
 }
 
-function formatNumber(num) {
-    return new Intl.NumberFormat('en-US').format(num);
+function saveProfilesToStorage() {
+    localStorage.setItem('dkpProfiles', JSON.stringify(dkpProfiles));
 }
 
-function formatShort(num) {
-    if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + 'B';
-    if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M';
-    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k';
-    return num.toString();
-}
+function updateProfileDropdown() {
+    dom.profileSelect.innerHTML = ''; 
+    
+    const profileNames = Object.keys(dkpProfiles);
 
-function normalize(val, min, max) {
-    if (max === min || isNaN(val) || !isFinite(val)) return 0;
-    return (val - min) / (max - min);
-}
-
-function debounce(func, wait) {
-    let timeout;
-    return function(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-function setStatus(message, isError = false) {
-    if (dom.loadStatus) {
-        dom.loadStatus.textContent = message;
-        dom.loadStatus.style.color = isError ? '#dc2626' : '#4b5563';
+    if (profileNames.length === 0) {
+        dom.profileSelect.innerHTML = '<option value="">-- No profiles found --</option>';
+        return;
     }
-}
 
-// --- Data Parsing & File Reading ---
+    const blankOption = '<option value="">-- Select a profile --</option>';
+    dom.profileSelect.innerHTML = blankOption;
 
-function readFileAsText(file) {
-    return new Promise((resolve, reject) => {
-        if (!file) {
-            reject(new Error("No file provided."));
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
+    profileNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        dom.profileSelect.appendChild(option.cloneNode(true));
     });
 }
 
-function parseCSV(data) {
-    try {
-        const lines = data.trim().split('\n');
-        if (lines.length === 0) return null;
-        if (lines[0].charCodeAt(0) === 0xFEFF) lines[0] = lines[0].substring(1);
+function handleLoadProfile() {
+    const profileName = dom.profileSelect.value;
+    if (!profileName || !dkpProfiles[profileName]) {
+        setStatus("Please select a valid profile to load.", true);
+        return;
+    }
 
-        // Basic cleaning of headers
-        const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, '').replace(/\r/g, ''));
+    setStatus(`Loading profile: ${profileName}...`);
+    
+    const profile = dkpProfiles[profileName];
+    calculatedPlayerData = profile.calculatedData;
+    
+    const settings = profile.dkpSettings;
+    dom.settingsInputs.t4Mult.value = settings.t4Mult;
+    dom.settingsInputs.t5Mult.value = settings.t5Mult;
+    dom.settingsInputs.deadsMult.value = settings.deadsMult;
+    dom.settingsInputs.targetPercent.value = settings.targetPercent;
+    
+    processFighterData();
+    renderAllTabs();
+    renderScatterChart();
+    
+    currentProfileName = profileName;
+    dom.profileNameInput.value = profileName; 
+    Object.values(dom.searchBars).forEach(bar => bar.disabled = false);
+    setStatus(`Successfully loaded profile: ${profileName}`);
+    activateTab('snapshot');
+}
+
+function handleDeleteProfile() {
+    const profileName = dom.profileSelect.value;
+    if (!profileName || !dkpProfiles[profileName]) {
+        setStatus("Please select a valid profile to delete.", true);
+        return;
+    }
+
+    if (confirm(`Are you sure you want to delete the profile "${profileName}"? This cannot be undone.`)) {
+        delete dkpProfiles[profileName];
+        saveProfilesToStorage();
+        updateProfileDropdown();
+        populateKdCompareDropdowns();
+        setStatus(`Deleted profile: ${profileName}`);
         
-        // DATA_MAP verification (Using the specific mapping we agreed on)
-        const DATA_MAP = {
-            id: "Governor ID",
-            name: "Governor Name",
-            power: "Power",
-            troopPower: "Troop Power",
-            t1kills: "T1 Kills",
-            t2kills: "T2 Kills",
-            t3kills: "T3 Kills",
-            t4kills: "T4 Kills",
-            t5kills: "T5 Kills",
-            deads: "Deads",
-            kp: "Kill Points"
+        if (currentProfileName === profileName) {
+            clearAllData();
+        }
+    }
+}
+
+function clearAllData() {
+    calculatedPlayerData = [];
+    fighterData = [];
+    currentProfileName = null;
+    dom.profileNameInput.value = "";
+    Object.values(dom.searchBars).forEach(bar => {
+        bar.disabled = true;
+        bar.value = "";
+    });
+    renderAllTabs(); 
+    renderScatterChart();
+    setStatus("Please create a new DKP profile or load an existing one.");
+    activateTab('manageData');
+}
+
+// --- DKP Calculation ---
+
+async function runDkpCalculation() {
+    setStatus("Calculating...");
+    
+    const profileName = dom.profileNameInput.value.trim();
+    if (!profileName) {
+        setStatus("Error: Please enter a Profile Name.", true);
+        return;
+    }
+    
+    const startFile = dom.startScanInput.files[0];
+    const endFile = dom.endScanInput.files[0];
+
+    if (!startFile && !endFile) {
+        if (dkpProfiles[profileName]) {
+            setStatus("Re-calculating with new settings...");
+        } else {
+            setStatus("Error: Please select both a Start Scan and End Scan file.", true);
+            return;
+        }
+    }
+
+    try {
+        const currentSettings = {
+            t4Mult: parseFloat(dom.settingsInputs.t4Mult.value) || 0,
+            t5Mult: parseFloat(dom.settingsInputs.t5Mult.value) || 0,
+            deadsMult: parseFloat(dom.settingsInputs.deadsMult.value) || 0,
+            targetPercent: parseFloat(dom.settingsInputs.targetPercent.value) || 0,
         };
         
-        const csvHeaders = new Set(headers);
-        let missingHeaders = [];
-        Object.values(DATA_MAP).forEach(headerName => {
-            if (!csvHeaders.has(headerName)) missingHeaders.push(headerName);
+        let startScanData, endScanData;
+        
+        if (startFile && endFile) {
+            const startScanText = await readFileAsText(startFile);
+            const endScanText = await readFileAsText(endFile);
+            startScanData = parseCSV(startScanText);
+            endScanData = parseCSV(endScanText);
+            
+            if (!startScanData || !endScanData) return; 
+
+            dkpProfiles[profileName] = {
+                ...dkpProfiles[profileName],
+                startScanRaw: startScanText,
+                endScanRaw: endScanText,
+            };
+
+        } else if (dkpProfiles[profileName]) {
+            startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
+            endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
+        } else {
+            throw new Error("No scan data found to calculate.");
+        }
+        
+        const endScanMap = new Map();
+        endScanData.forEach(player => {
+            endScanMap.set(player['Governor ID'], player);
         });
+        
+        calculateAllPlayerData(startScanData, endScanMap, currentSettings);
+        
+        dkpProfiles[profileName] = {
+            ...dkpProfiles[profileName],
+            calculatedData: calculatedPlayerData,
+            dkpSettings: currentSettings
+        };
+        saveProfilesToStorage();
+        
+        currentProfileName = profileName;
+        updateProfileDropdown();
+        populateKdCompareDropdowns(); 
+        dom.profileSelect.value = profileName; 
+        
+        processFighterData();
+        renderAllTabs();
+        renderScatterChart();
+        Object.values(dom.searchBars).forEach(bar => bar.disabled = false);
 
-        if (missingHeaders.length > 0) {
-            throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
-        }
+        setStatus(`Successfully saved and calculated DKP for ${profileName}.`);
+        activateTab('snapshot'); 
 
-        const headerIndices = {};
-        for (const key in DATA_MAP) {
-            headerIndices[key] = headers.indexOf(DATA_MAP[key]);
-        }
-
-        return lines.map(line => {
-            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            let player = {};
-            for (const key in headerIndices) {
-                const index = headerIndices[key];
-                player[DATA_MAP[key]] = (values[index] || '').trim().replace(/"/g, '').replace(/\r/g, '');
-            }
-            return player;
-        }).filter(p => p[DATA_MAP.id]); 
-
-    } catch (e) {
-        console.error("Failed to parse CSV", e);
-        setStatus(`Error: ${e.message}. Check file format.`, true);
-        return null;
+    } catch (err) {
+        console.error("Error during DKP calculation:", err);
+        setStatus(`Error: ${err.message}`, true);
     }
+}
+
+
+function calculateAllPlayerData(startData, endMap, settings) {
+    calculatedPlayerData = startData.map(startPlayer => {
+        const govId = startPlayer['Governor ID'];
+        const endPlayer = endMap.get(govId);
+
+        const startPower = cleanNumber(startPlayer['Power']);
+        let endPower = 0, endTroopPower = 0;
+        let endT1=0, endT2=0, endT3=0, endT4=0, endT5=0, endDeads=0;
+
+        if (endPlayer) {
+            endPower = cleanNumber(endPlayer['Power']);
+            endTroopPower = cleanNumber(endPlayer['Troop Power']);
+            endT1 = cleanNumber(endPlayer['T1 Kills']);
+            endT2 = cleanNumber(endPlayer['T2 Kills']);
+            endT3 = cleanNumber(endPlayer['T3 Kills']);
+            endT4 = cleanNumber(endPlayer['T4 Kills']);
+            endT5 = cleanNumber(endPlayer['T5 Kills']);
+            endDeads = cleanNumber(endPlayer['Deads']);
+        }
+        
+        const startTroopPower = cleanNumber(startPlayer['Troop Power']);
+        const startT1 = cleanNumber(startPlayer['T1 Kills']);
+        const startT2 = cleanNumber(startPlayer['T2 Kills']);
+        const startT3 = cleanNumber(startPlayer['T3 Kills']);
+        const startT4 = cleanNumber(startPlayer['T4 Kills']);
+        const startT5 = cleanNumber(startPlayer['T5 Kills']);
+        const startDeads = cleanNumber(startPlayer['Deads']);
+        
+        const numeric_t1 = Math.max(0, endT1 - startT1);
+        const numeric_t2 = Math.max(0, endT2 - startT2);
+        const numeric_t3 = Math.max(0, endT3 - startT3);
+        const numeric_t4 = Math.max(0, endT4 - startT4);
+        const numeric_t5 = Math.max(0, endT5 - startT5);
+        const numeric_deads = Math.max(0, endDeads - startDeads);
+        const numeric_power_plus = endPower - startPower;
+        const numeric_troop_power_plus = endTroopPower - startTroopPower;
+        const numeric_t4t5 = numeric_t4 + numeric_t5;
+
+        const { t4Mult, t5Mult, deadsMult, targetPercent } = settings;
+        
+        const numeric_kvk_kp = (numeric_t4 * t4Mult) + (numeric_t5 * t5Mult);
+        const numeric_kvk_dkp = (numeric_deads * deadsMult) + numeric_kvk_kp;
+        const numeric_target_dkp = startPower * (targetPercent / 100);
+        
+        let numeric_dkp_percent = 0;
+        if (numeric_target_dkp > 0) {
+            numeric_dkp_percent = (numeric_kvk_dkp / numeric_target_dkp) * 100;
+        }
+        
+        return {
+            'Governor ID': govId,
+            'Governor Name': startPlayer['Governor Name'],
+            'Starting Power': startPower,
+            'Power +/-': numeric_power_plus,
+            'Troop Power': numeric_troop_power_plus,
+            'T1 Kills': numeric_t1,
+            'T2 Kills': numeric_t2,
+            'T3 Kills': numeric_t3,
+            'T4 Kills': numeric_t4,
+            'T5 Kills': numeric_t5,
+            'T4+T5 Combined': numeric_t4t5,
+            'Kvk only Deads': numeric_deads,
+            'kvk only KP': numeric_kvk_kp,
+            'KVK DKP': numeric_kvk_dkp,
+            'Target DKP': numeric_target_dkp,
+            'DKP % Complete': numeric_dkp_percent.toFixed(0),
+            
+            numeric_kvk_kp: numeric_kvk_kp,
+            numeric_deads: numeric_deads,
+            numeric_dkp_percent: numeric_dkp_percent,
+            numeric_power: startPower,
+            numeric_t4t5: numeric_t4t5
+        };
+    });
+}
+
+function processFighterData() {
+    fighterData = calculatedPlayerData
+        .filter(p => p.numeric_kvk_kp > 0 && p.numeric_power >= 20000000)
+        .sort((a, b) => b.numeric_dkp_percent - a.numeric_dkp_percent);
 }
