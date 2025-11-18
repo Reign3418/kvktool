@@ -1,121 +1,72 @@
-/**
- * UNITY - KvK DKP Calculator
- * This is Part 1 of 4 of the main application script.
- * This part contains all global state, DOM references, and core data processing functions.
- */
+// --- App State ---
+let calculatedPlayerData = []; // Processed data for the *currently loaded* profile
+let fighterData = [];
+// Removed selectedPlayers
+let currentSort = { column: 'numeric_dkp_percent', direction: 'desc' };
+let dkpProfiles = {}; // Object to hold all saved profiles
+let currentProfileName = null; // The name of the profile currently loaded
 
-// --- Global State ---
-let allPlayerData = [];
-let selectedPlayers = []; // Array of Governor IDs
-let currentProfileName = null;
-let currentSort = { column: 'dkpPercent', direction: 'desc' };
+// --- DOM Element Refs ---
+const loadStatus = document.getElementById('load-status');
+const runDkpBtn = document.getElementById('run-dkp-btn');
+const loadProfileBtn = document.getElementById('load-profile-btn');
+const deleteProfileBtn = document.getElementById('delete-profile-btn');
+const profileSelect = document.getElementById('profile-select');
+const profileNameInput = document.getElementById('profile-name');
 
-// --- DOM Element Cache ---
-// We cache all DOM elements on load for performance
-const dom = {
-    loadStatus: document.getElementById('load-status'),
-    
-    // Tabs
-    tabs: {
-        manageData: { btn: document.getElementById('btn-manage-data'), content: document.getElementById('content-manage-data') },
-        settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
-        snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
-        playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
-        fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
-        compare: { btn: document.getElementById('btn-compare'), content: document.getElementById('content-compare') },
-        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-        kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
-    },
+// Scan Data File Inputs
+const startScanInput = document.getElementById('start-scan-file');
+const endScanInput = document.getElementById('end-scan-file');
 
-    // Manage Data Tab
-    profileNameInput: document.getElementById('profile-name'),
-    startScanFile: document.getElementById('start-scan-file'),
-    endScanFile: document.getElementById('end-scan-file'),
-    runDKPBtn: document.getElementById('run-dkp-btn'),
-    profileSelect: document.getElementById('profile-select'),
-    loadProfileBtn: document.getElementById('load-profile-btn'),
-    deleteProfileBtn: document.getElementById('delete-profile-btn'),
-
-    // Settings Tab
-    settings: {
-        t4mult: document.getElementById('setting-t4-mult'),
-        t5mult: document.getElementById('setting-t5-mult'),
-        deadsMult: document.getElementById('setting-deads-mult'),
-        targetPercent: document.getElementById('setting-target-percent')
-    },
-    
-    // Search Bars
-    searchBars: {
-        snapshot: document.getElementById('search-bar-snapshot'),
-        playerCards: document.getElementById('search-bar-player-cards'),
-        fighters: document.getElementById('search-bar-fighters')
-    },
-
-    // Content Grids
-    snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
-    playerGrid: document.getElementById('player-grid'),
-    fighterGrid: document.getElementById('fighter-grid'),
-    
-    // Compare Tab
-    compareBtn: document.getElementById('btn-compare'),
-    clearBtn: document.getElementById('clear-selection-btn'),
-    compareWrapper: document.getElementById('compare-table-wrapper'),
-    
-    // Chart Tab
-    chartContainer: document.querySelector('.chart-container'),
-    chartCanvas: document.getElementById('scatter-chart'),
-    chartTooltip: document.getElementById('chart-tooltip'),
-    
-    // Kd Compare Tab
-    kdProfileSelectA: document.getElementById('kd-profile-select-a'),
-    kdProfileSelectB: document.getElementById('kd-profile-select-b'),
-    runKdCompareBtn: document.getElementById('run-kd-compare-btn'),
-    kdCompareResult: document.getElementById('kd-compare-result')
+const tabs = {
+    manageData: { btn: document.getElementById('btn-manage-data'), content: document.getElementById('content-manage-data') },
+    settings: { btn: document.getElementById('btn-settings'), content: document.getElementById('content-settings') },
+    snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
+    playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
+    fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
+    // REMOVED Compare tab
+    chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
+    kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
 };
 
-
-// --- Data Mapping (From our calibration) ---
-// This tells the app what the column headers in the CSV are named.
-const DATA_MAP = {
-    id: "Governor ID",
-    name: "Governor Name",
-    power: "Power",
-    troopPower: "Troop Power",
-    t1kills: "T1 Kills",
-    t2kills: "T2 Kills",
-    t3kills: "T3 Kills",
-    t4kills: "T4 Kills",
-    t5kills: "T5 Kills",
-    deads: "Deads",
-    kp: "Kill Points" // The raw "Kill Points" from the scan
+const searchBars = {
+    snapshot: document.getElementById('search-bar-snapshot'),
+    playerCards: document.getElementById('search-bar-player-cards'),
+    fighters: document.getElementById('search-bar-fighters')
 };
+
+// DKP Settings Inputs
+const settingsInputs = {
+    t4Mult: document.getElementById('setting-t4-mult'),
+    t5Mult: document.getElementById('setting-t5-mult'),
+    deadsMult: document.getElementById('setting-deads-mult'),
+    targetPercent: document.getElementById('setting-target-percent')
+};
+
+const playerGrid = document.getElementById('player-grid');
+const fighterGrid = document.getElementById('fighter-grid');
+const snapshotTableWrapper = document.getElementById('snapshot-table-wrapper');
+
+// REMOVED compare buttons and wrappers
+
+// Kingdom Compare DOM Refs
+const kdProfileSelectA = document.getElementById('kd-profile-select-a');
+const kdProfileSelectB = document.getElementById('kd-profile-select-b');
+const runKdCompareBtn = document.getElementById('run-kd-compare-btn');
+const kdCompareResult = document.getElementById('kd-compare-result');
+
 
 // --- Utility Functions ---
 
-/**
- * Cleans and parses a number string (e.g., "1,234,567")
- * @param {string} str The string to clean.
- * @returns {number} The parsed number.
- */
 function cleanNumber(str) {
     if (typeof str !== 'string') return 0;
     return parseInt(str.replace(/,/g, '').replace(/"/g, ''), 10) || 0;
 }
 
-/**
- * Formats a number with commas.
- * @param {number} num The number to format.
- * @returns {string} A string with commas (e.g., "1,234,567").
- */
 function formatNumber(num) {
     return new Intl.NumberFormat('en-US').format(num);
 }
 
-/**
- * Formats a number into a short string (e.g., "1.2M", "3.4B").
- * @param {number} num The number to format.
- * @returns {string} A short string representation.
- */
 function formatShort(num) {
     if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + 'B';
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M';
@@ -123,41 +74,31 @@ function formatShort(num) {
     return num.toString();
 }
 
-/**
- * Normalizes a value to a 0-1 range for heatmaps.
- * @param {number} val The value to normalize.
- * @param {number} min The minimum value in the dataset.
- * @param {number} max The maximum value in the dataset.
- * @returns {number} A value between 0 and 1.
- */
 function normalize(val, min, max) {
-    if (max === min) return 1; // Avoid division by zero
+    if (max === min || isNaN(val) || !isFinite(val)) return 0;
     return (val - min) / (max - min);
 }
 
-/**
- * A debouncer function to limit how often a function can run.
- * Used for the chart resizing.
- * @param {function} func The function to debounce.
- * @param {number} delay The delay in milliseconds.
- * @returns {function} The debounced function.
- */
-function debounce(func, delay) {
+function debounce(func, wait) {
     let timeout;
-    return function(...args) {
-        const context = this;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
         clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(context, args), delay);
+        timeout = setTimeout(later, wait);
     };
 }
 
-/**
- * Reads an uploaded file as plain text.
- * @param {File} file The file from the <input type="file">.
- * @returns {Promise<string>} A promise that resolves with the file's text content.
- */
+// --- Data Parsing & File Reading ---
+
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
+        if (!file) {
+            reject(new Error("No file provided."));
+            return;
+        }
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(reader.error);
@@ -165,194 +106,333 @@ function readFileAsText(file) {
     });
 }
 
-
-// --- Data Parsing & Processing ---
-
-/**
- * Parses raw CSV text into an array of player objects.
- * @param {string} data The raw CSV text.
- * @returns {Array<Object> | null} An array of objects, or null if parsing fails.
- */
 function parseCSV(data) {
-    try {
-        const lines = data.trim().split('\n');
-        // Remove any carriage returns
-        const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, '').replace(/\r/g, ''));
-        
-        // --- Data Validation ---
-        // Check if all our required headers exist in the CSV
-        const requiredHeaders = Object.values(DATA_MAP);
-        let missingHeaders = [];
-        for (const requiredHeader of requiredHeaders) {
-            if (!headers.includes(requiredHeader)) {
-                missingHeaders.push(requiredHeader);
-            }
-        }
-        
-        if (missingHeaders.length > 0) {
-            console.error("CSV parsing failed. Missing headers:", missingHeaders);
-            setStatus(`Error: CSV file is missing required columns: ${missingHeaders.join(', ')}`, true);
-            return null; // Stop execution
-        }
-        
-        // Find the *index* of each required header
-        const headerIndices = {};
-        for (const key in DATA_MAP) {
-            headerIndices[key] = headers.indexOf(DATA_MAP[key]);
-        }
-        
-        // --- Process Lines ---
-        return lines.map(line => {
-            // Regex to split on commas not inside quotes
-            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            let player = {};
-            
-            // Use the headerIndices map to pull data
-            // This is robust to column order changes
-            for (const key in headerIndices) {
-                const index = headerIndices[key];
-                player[DATA_MAP[key]] = (values[index] || '').trim().replace(/"/g, '').replace(/\r/g, '');
-            }
-            return player;
-        }).filter(p => p[DATA_MAP.id]); // Filter out any empty rows
-
-    } catch (e) {
-        console.error("Fatal CSV parsing error:", e);
-        setStatus(`Error: Failed to parse CSV. Is it a valid CSV file? (${e.message})`, true);
-        return null;
-    }
+    const lines = data.trim().split('\n');
+    const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, ''));
+    
+    return lines.map(line => {
+        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        let player = {};
+        headers.forEach((header, index) => {
+            player[header] = (values[index] || '').trim().replace(/"/g, '');
+        });
+        return player;
+    });
 }
 
-/**
- * The core DKP calculation engine.
- * Takes the raw "start" and "end" data and the settings,
- * and returns the final calculated player data.
- * @param {Array<Object>} startData - Parsed "Start Scan" data.
- * @param {Array<Object>} endData - Parsed "End Scan" data.
- * @param {Object} settings - The DKP multipliers.
- * @returns {Array<Object>} The final array of all player data.
- */
-function runDKPCalculation(startData, endData, settings) {
-    const endDataMap = new Map(endData.map(p => [p[DATA_MAP.id], p]));
-    let calculatedData = [];
+// --- Local Storage & Profile Management ---
 
-    // Loop through the START scan. This is our master list of players.
-    for (const startPlayer of startData) {
-        const id = startPlayer[DATA_MAP.id];
-        const endPlayer = endDataMap.get(id);
-
-        // If player isn't in the end scan, they probably migrated. Skip 'em.
-        if (!endPlayer) {
-            console.warn(`Player ${startPlayer[DATA_MAP.name]} (${id}) not found in End Scan. Skipping.`);
-            continue;
-        }
-
-        try {
-            // --- 1. Get (After - Before) Stats ---
-            const startPower = cleanNumber(startPlayer[DATA_MAP.power]);
-            const endPower = cleanNumber(endPlayer[DATA_MAP.power]);
-            const startTroopPower = cleanNumber(startPlayer[DATA_MAP.troopPower]);
-            const endTroopPower = cleanNumber(endPlayer[DATA_MAP.troopPower]);
-            const t1kills = cleanNumber(endPlayer[DATA_MAP.t1kills]) - cleanNumber(startPlayer[DATA_MAP.t1kills]);
-            const t2kills = cleanNumber(endPlayer[DATA_MAP.t2kills]) - cleanNumber(startPlayer[DATA_MAP.t2kills]);
-            const t3kills = cleanNumber(endPlayer[DATA_MAP.t3kills]) - cleanNumber(startPlayer[DATA_MAP.t3kills]);
-            const t4kills = cleanNumber(endPlayer[DATA_MAP.t4kills]) - cleanNumber(startPlayer[DATA_MAP.t4kills]);
-            const t5kills = cleanNumber(endPlayer[DATA_MAP.t5kills]) - cleanNumber(startPlayer[DATA_MAP.t5kills]);
-            const deads = cleanNumber(endPlayer[DATA_MAP.deads]) - cleanNumber(startPlayer[DATA_MAP.deads]);
-            const rawKP = cleanNumber(endPlayer[DATA_MAP.kp]) - cleanNumber(startPlayer[DATA_MAP.kp]);
-
-            // --- 2. Run DKP Formulas ---
-            // Formula for 'kvk only KP' (AL)
-            const calcKP = (t4kills * settings.t4mult) + (t5kills * settings.t5mult);
-            
-            // Formula for 'KVK DKP' (AM)
-            // We apply the bonus (AP) here, defaulting to 1 (100%)
-            const bonus = 1; // TODO: Add bonus/punishment to settings
-            const dkp = ((deads * settings.deadsMult) + calcKP) * bonus;
-
-            // Formula for 'Target DKP' (AN)
-            const targetDKP = startPower * (settings.targetPercent / 100);
-
-            // Formula for 'DKP % Complete' (AO)
-            const dkpPercent = (targetDKP === 0) ? 0 : Math.round((dkp / targetDKP) * 100);
-
-            // --- 3. Assemble Final Player Object ---
-            const finalPlayer = {
-                id: id,
-                name: startPlayer[DATA_MAP.name],
-                startPower: startPower,
-                powerChange: endPower - startPower,
-                troopPowerChange: endTroopPower - startTroopPower,
-                t1kills: t1kills,
-                t2kills: t2kills,
-                t3kills: t3kills,
-                t4kills: t4kills,
-                t5kills: t5kills,
-                t4t5Kills: t4kills + t5kills,
-                deads: deads,
-                rawKP: rawKP,
-                calcKP: calcKP, // Our formula-based KP (AL)
-                dkp: dkp, // Our formula-based DKP (AM)
-                targetDKP: targetDKP, // (AN)
-                dkpPercent: dkpPercent // (AO)
-            };
-            calculatedData.push(finalPlayer);
-
-        } catch (e) {
-            console.error(`Failed to process player ${id}: ${e.message}`);
-            // Don't stop the whole process, just skip this player
-        }
-    }
-
-    return calculatedData;
+function loadProfilesFromStorage() {
+    const profiles = localStorage.getItem('dkpProfiles');
+    dkpProfiles = profiles ? JSON.parse(profiles) : {};
+    updateProfileDropdown();
+    populateKdCompareDropdowns(); // Ensure dropdowns for Kd compare are updated
 }
 
+function saveProfilesToStorage() {
+    localStorage.setItem('dkpProfiles', JSON.stringify(dkpProfiles));
+}
 
-// --- DOM Rendering Functions ---
+function updateProfileDropdown() {
+    profileSelect.innerHTML = ''; // Clear existing options
+    
+    const profileNames = Object.keys(dkpProfiles);
 
-/**
- * Main render function. Called after data is loaded/calculated.
- * @param {Array<Object>} data The array of player data.
- */
-function renderAllTabs(data) {
-    if (!data || data.length === 0) {
-        // Render empty state
-        dom.snapshotTableWrapper.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
-        dom.playerGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
-        dom.fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+    if (profileNames.length === 0) {
+        const defaultOption = '<option value="">-- No profiles found --</option>';
+        profileSelect.innerHTML = defaultOption;
         return;
     }
 
-    // Process fighter data
-    const fighterData = data
-        .filter(p => p.calcKP > 0 && p.startPower >= 20000000)
-        .sort((a, b) => b.dkpPercent - a.dkpPercent);
+    const blankOption = '<option value="">-- Select a profile --</option>';
+    profileSelect.innerHTML = blankOption;
+
+    profileNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        profileSelect.appendChild(option.cloneNode(true));
+    });
+}
+
+function handleLoadProfile() {
+    const profileName = profileSelect.value;
+    if (!profileName || !dkpProfiles[profileName]) {
+        loadStatus.textContent = "Please select a valid profile to load.";
+        return;
+    }
+
+    loadStatus.textContent = `Loading profile: ${profileName}...`;
     
-    // Render all tabs
-    renderSnapshotTable(data);
-    renderPlayerCards(data);
-    renderFighterCards(fighterData);
-    renderComparison(); // Renders the "empty" state for compare
+    // 1. Load data from storage
+    const profile = dkpProfiles[profileName];
+    calculatedPlayerData = profile.calculatedData;
     
-    // Enable search bars
-    Object.values(dom.searchBars).forEach(bar => bar.disabled = false);
+    // 2. Load settings into the settings tab
+    const settings = profile.dkpSettings;
+    settingsInputs.t4Mult.value = settings.t4Mult;
+    settingsInputs.t5Mult.value = settings.t5Mult;
+    settingsInputs.deadsMult.value = settings.deadsMult;
+    settingsInputs.targetPercent.value = settings.targetPercent;
     
-    // Clear and mark chart for re-render
-    if (dom.chartCanvas) dom.chartCanvas._chartRendered = false;
-    if (dom.tabs.chart.content.classList.contains('active')) {
-        renderScatterChart(); // Re-render chart if it's the active tab
+    // 3. Process and render
+    processFighterData();
+    renderAllTabs();
+    renderScatterChart();
+    
+    // 4. Update state
+    currentProfileName = profileName;
+    profileNameInput.value = profileName; // Set name in case of re-save
+    Object.values(searchBars).forEach(bar => bar.disabled = false);
+    loadStatus.textContent = `Successfully loaded profile: ${profileName}`;
+    activateTab('snapshot');
+}
+
+function handleDeleteProfile() {
+    const profileName = profileSelect.value;
+    if (!profileName || !dkpProfiles[profileName]) {
+        loadStatus.textContent = "Please select a valid profile to delete.";
+        return;
+    }
+
+    if (confirm(`Are you sure you want to delete the profile "${profileName}"? This cannot be undone.`)) {
+        delete dkpProfiles[profileName];
+        saveProfilesToStorage();
+        updateProfileDropdown();
+        populateKdCompareDropdowns();
+        loadStatus.textContent = `Deleted profile: ${profileName}`;
+        
+        // If the deleted profile was the one loaded, clear the app
+        if (currentProfileName === profileName) {
+            clearAllData();
+        }
     }
 }
-/**
- * Renders the snapshot table.
- * @param {Array<Object>} data The array of player data.
- */
-function renderSnapshotTable(data) {
-    // 1. Get stats for heatmap normalization
-    const kps = data.map(p => p.calcKP);
-    const deads = data.map(p => p.deads);
-    const dkps = data.map(p => p.dkpPercent);
-    const t4t5s = data.map(p => p.t4t5Kills);
+
+function clearAllData() {
+    calculatedPlayerData = [];
+    fighterData = [];
+    // Removed selectedPlayers clear
+    currentProfileName = null;
+    profileNameInput.value = "";
+    Object.values(searchBars).forEach(bar => {
+        bar.disabled = true;
+        bar.value = "";
+    });
+    renderAllTabs(); // This will show empty states
+    renderScatterChart();
+    loadStatus.textContent = "Please create a new DKP profile or load an existing one.";
+    activateTab('manageData');
+}
+
+// --- DKP Calculation ---
+
+async function runDkpCalculation() {
+    loadStatus.textContent = "Calculating...";
+    
+    const profileName = profileNameInput.value.trim();
+    if (!profileName) {
+        loadStatus.textContent = "Error: Please enter a Profile Name.";
+        return;
+    }
+    
+    const startFile = startScanInput.files[0];
+    const endFile = endScanInput.files[0];
+
+    // Check if we are re-saving a profile. If so, file uploads are optional.
+    if (!startFile || !endFile) {
+        if (dkpProfiles[profileName]) {
+            loadStatus.textContent = "Re-calculating with new settings...";
+        } else {
+            // This is a new profile and files are missing
+            loadStatus.textContent = "Error: Please select both a Start Scan and End Scan file.";
+            return;
+        }
+    }
+
+    try {
+        // 1. Get new settings from inputs
+        const currentSettings = {
+            t4Mult: parseFloat(settingsInputs.t4Mult.value) || 0,
+            t5Mult: parseFloat(settingsInputs.t5Mult.value) || 0,
+            deadsMult: parseFloat(settingsInputs.deadsMult.value) || 0,
+            targetPercent: parseFloat(settingsInputs.targetPercent.value) || 0,
+        };
+        
+        // 2. Get scan data
+        let startScanData, endScanData;
+        
+        if (startFile && endFile) {
+            // New files were uploaded
+            const startScanText = await readFileAsText(startFile);
+            const endScanText = await readFileAsText(endFile);
+            startScanData = parseCSV(startScanText);
+            endScanData = parseCSV(endScanText);
+            
+            // Save the raw text to the profile for re-calculation
+            dkpProfiles[profileName] = {
+                ...dkpProfiles[profileName], // Keep any old data
+                startScanRaw: startScanText,
+                endScanRaw: endScanText,
+            };
+
+        } else if (dkpProfiles[profileName]) {
+            // No new files, re-calculate from saved raw data
+            startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
+            endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
+        } else {
+            throw new Error("No scan data found to calculate.");
+        }
+        
+        // 3. Create a fast lookup map for the "End Scan" data
+        const endScanMap = new Map();
+        endScanData.forEach(player => {
+            endScanMap.set(player['Governor ID'], player);
+        });
+        
+        // 4. Calculate all player data
+        calculateAllPlayerData(startScanData, endScanMap, currentSettings);
+        
+        // 5. Save the *results* and *settings* to the profile
+        dkpProfiles[profileName] = {
+            ...dkpProfiles[profileName], // Keep raw scan data
+            calculatedData: calculatedPlayerData,
+            dkpSettings: currentSettings
+        };
+        saveProfilesToStorage();
+        
+        // 6. Update UI
+        currentProfileName = profileName;
+        updateProfileDropdown();
+        populateKdCompareDropdowns(); // Update compare dropdowns
+        profileSelect.value = profileName; // Select the new profile
+        
+        processFighterData();
+        renderAllTabs();
+        renderScatterChart();
+        Object.values(searchBars).forEach(bar => bar.disabled = false);
+
+        loadStatus.textContent = `Successfully saved and calculated DKP for ${profileName}.`;
+        activateTab('snapshot'); // Show the results!
+
+    } catch (err) {
+        console.error("Error during DKP calculation:", err);
+        loadStatus.textContent = `Error: ${err.message}`;
+    }
+}
+
+
+function calculateAllPlayerData(startData, endMap, settings) {
+    calculatedPlayerData = startData.map(startPlayer => {
+        const govId = startPlayer['Governor ID'];
+        const endPlayer = endMap.get(govId);
+
+        // --- Calculate Stats from Before/After ---
+        const startPower = cleanNumber(startPlayer['Power']);
+        let endPower = 0;
+        let endTroopPower = 0;
+        let endT1 = 0, endT2 = 0, endT3 = 0, endT4 = 0, endT5 = 0, endDeads = 0;
+
+        // If player isn't in the end scan, they get 0 for all end stats
+        if (endPlayer) {
+            endPower = cleanNumber(endPlayer['Power']);
+            endTroopPower = cleanNumber(endPlayer['Troop Power']);
+            endT1 = cleanNumber(endPlayer['T1 Kills']);
+            endT2 = cleanNumber(endPlayer['T2 Kills']);
+            endT3 = cleanNumber(endPlayer['T3 Kills']);
+            endT4 = cleanNumber(endPlayer['T4 Kills']);
+            endT5 = cleanNumber(endPlayer['T5 Kills']);
+            endDeads = cleanNumber(endPlayer['Deads']);
+        }
+        
+        const startTroopPower = cleanNumber(startPlayer['Troop Power']);
+        const startT1 = cleanNumber(startPlayer['T1 Kills']);
+        const startT2 = cleanNumber(startPlayer['T2 Kills']);
+        const startT3 = cleanNumber(startPlayer['T3 Kills']);
+        const startT4 = cleanNumber(startPlayer['T4 Kills']);
+        const startT5 = cleanNumber(startPlayer['T5 Kills']);
+        const startDeads = cleanNumber(startPlayer['Deads']);
+        
+        // These are the KvK-only stats
+        const numeric_t1 = Math.max(0, endT1 - startT1);
+        const numeric_t2 = Math.max(0, endT2 - startT2);
+        const numeric_t3 = Math.max(0, endT3 - startT3);
+        const numeric_t4 = Math.max(0, endT4 - startT4);
+        const numeric_t5 = Math.max(0, endT5 - startT5);
+        const numeric_deads = Math.max(0, endDeads - startDeads);
+        const numeric_power_plus = endPower - startPower;
+        const numeric_troop_power_plus = endTroopPower - startTroopPower;
+        const numeric_t4t5 = numeric_t4 + numeric_t5;
+
+        // --- Calculate DKP Stats from Settings ---
+        const { t4Mult, t5Mult, deadsMult, targetPercent } = settings;
+        
+        const numeric_kvk_kp = (numeric_t4 * t4Mult) + (numeric_t5 * t5Mult);
+        
+        const numeric_kvk_dkp = (numeric_deads * deadsMult) + numeric_kvk_kp;
+        
+        const numeric_target_dkp = startPower * (targetPercent / 100);
+        
+        let numeric_dkp_percent = 0;
+        if (numeric_target_dkp > 0) {
+            numeric_dkp_percent = (numeric_kvk_dkp / numeric_target_dkp) * 100;
+        }
+        
+        // Return a new object matching the structure our tabs expect
+        return {
+            'Governor ID': govId,
+            'Governor Name': startPlayer['Governor Name'],
+            'Starting Power': startPower,
+            'Power +/-': numeric_power_plus,
+            'Troop Power': numeric_troop_power_plus,
+            'T1 Kills': numeric_t1,
+            'T2 Kills': numeric_t2,
+            'T3 Kills': numeric_t3,
+            'T4 Kills': numeric_t4,
+            'T5 Kills': numeric_t5,
+            'T4+T5 Combined': numeric_t4t5,
+            'Kvk only Deads': numeric_deads,
+            'kvk only KP': numeric_kvk_kp,
+            'KVK DKP': numeric_kvk_dkp,
+            'Target DKP': numeric_target_dkp,
+            'DKP % Complete': numeric_dkp_percent.toFixed(0),
+            
+            // Keep pre-calculated numerics for sorting
+            numeric_kvk_kp: numeric_kvk_kp,
+            numeric_deads: numeric_deads,
+            numeric_dkp_percent: numeric_dkp_percent,
+            numeric_power: startPower,
+            numeric_t4t5: numeric_t4t5
+        };
+    });
+}
+
+
+function processFighterData() {
+    fighterData = calculatedPlayerData
+        .filter(p => p.numeric_kvk_kp > 0 && p.numeric_power >= 20000000)
+        .sort((a, b) => b.numeric_dkp_percent - a.numeric_dkp_percent);
+}
+
+// --- Tab Rendering Functions ---
+
+function renderAllTabs() {
+    renderSnapshotTable();
+    renderPlayerCards();
+    renderFighterCards();
+    // Removed renderComparison()
+}
+
+function renderSnapshotTable() {
+    if (calculatedPlayerData.length === 0) {
+        snapshotTableWrapper.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+        return;
+    }
+    
+    const kps = calculatedPlayerData.map(p => p.numeric_kvk_kp);
+    const deads = calculatedPlayerData.map(p => p.numeric_deads);
+    const dkps = calculatedPlayerData.map(p => p.numeric_dkp_percent);
+    const t4t5s = calculatedPlayerData.map(p => p.numeric_t4t5);
 
     const max = {
         kp: Math.max(...kps), kp_min: Math.min(...kps),
@@ -361,311 +441,294 @@ function renderSnapshotTable(data) {
         t4t5: Math.max(...t4t5s), t4t5_min: Math.min(...t4t5s),
     };
 
-    // 2. Sort data
-    sortData(data);
+    sortData(calculatedPlayerData);
     
-    // 3. Generate Table HTML
-    let tableHTML = `
-        <table class="snapshot-table">
-            <thead>
-                <tr>
-                    <th class="compare-checkbox-cell"></th>
-                    <th data-sort="name">Name</th>
-                    <th data-sort="calcKP">KvK KP</th>
-                    <th data-sort="t4t5Kills">T4/T5 Kills</th>
-                    <th data-sort="deads">Deads</th>
-                    <th data-sort="dkpPercent">DKP %</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    // Use document fragments for performance
-    const fragment = document.createDocumentFragment();
-    
-    data.forEach(player => {
-        const govId = player.id;
-        const isChecked = selectedPlayers.includes(govId);
-
-        // Calculate heatmap opacity
-        const kpOpacity = normalize(player.calcKP, max.kp_min, max.kp);
-        const t4t5Opacity = normalize(player.t4t5Kills, max.t4t5_min, max.t4t5);
-        const deadsOpacity = normalize(player.deads, max.deads_min, max.deads);
-        const dkpOpacity = normalize(player.dkpPercent, max.dkp_min, max.dkp);
-        
-        const tr = document.createElement('tr');
-        tr.dataset.id = govId;
-        tr.dataset.name = player.name.toLowerCase();
-        
-        tr.innerHTML = `
-            <td class="compare-checkbox-cell">
-                <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
-            </td>
-            <td title="${govId}">${player.name}</td>
-            <td data-heatmap-color="green" style="--heatmap-opacity: ${kpOpacity};">${formatShort(player.calcKP)}</td>
-            <td data-heatmap-color="green" style="--heatmap-opacity: ${t4t5Opacity};">${formatShort(player.t4t5Kills)}</td>
-            <td data-heatmap-color="red" style="--heatmap-opacity: ${deadsOpacity};">${formatNumber(player.deads)}</td>
-            <td data-heatmap-color="blue" style="--heatmap-opacity: ${dkpOpacity};">${player.dkpPercent}%</td>
-        `;
-        fragment.appendChild(tr);
-    });
-
-    dom.snapshotTableWrapper.innerHTML = ''; // Clear previous content
+    snapshotTableWrapper.innerHTML = '';
     const table = document.createElement('table');
     table.className = 'snapshot-table';
-    table.innerHTML = `
-        <thead>
-            <tr>
-                <th class="compare-checkbox-cell"></th>
-                <th data-sort="name">Name ${currentSort.column === 'name' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
-                <th data-sort="calcKP">KvK KP ${currentSort.column === 'calcKP' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
-                <th data-sort="t4t5Kills">T4/T5 Kills ${currentSort.column === 't4t5Kills' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
-                <th data-sort="deads">Deads ${currentSort.column === 'deads' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
-                <th data-sort="dkpPercent">DKP % ${currentSort.column === 'dkpPercent' ? (currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;') : ''}</th>
-            </tr>
-        </thead>
-    `;
+    
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    // Removed checkbox column header
+    const headers = [
+        { text: 'Name', sort: 'Governor Name', class: '' },
+        { text: 'KvK KP', sort: 'numeric_kvk_kp', class: '' },
+        { text: 'T4/T5 Kills', sort: 'numeric_t4t5', class: '' },
+        { text: 'Deads', sort: 'numeric_deads', class: '' },
+        { text: 'DKP %', sort: 'numeric_dkp_percent', class: '' }
+    ];
+    
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h.text;
+        if (h.class) th.className = h.class;
+        if (h.sort) {
+            th.dataset.sort = h.sort;
+            th.addEventListener('click', handleSort);
+            if (h.sort === currentSort.column) {
+                th.innerHTML += currentSort.direction === 'desc' ? ' &darr;' : ' &uarr;';
+            }
+        }
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
     const tbody = document.createElement('tbody');
-    tbody.appendChild(fragment);
+    calculatedPlayerData.forEach(player => {
+        const tr = document.createElement('tr');
+        const govId = player['Governor ID'];
+        tr.dataset.id = govId;
+        tr.dataset.name = player['Governor Name'].toLowerCase();
+
+        // Removed Checkbox Cell logic
+
+        const tdName = document.createElement('td');
+        tdName.textContent = player['Governor Name'];
+        tdName.title = govId;
+        tr.appendChild(tdName);
+
+        const tdKP = document.createElement('td');
+        tdKP.textContent = formatShort(player.numeric_kvk_kp);
+        tdKP.dataset.heatmapColor = 'green';
+        tdKP.style = `--heatmap-opacity: ${normalize(player.numeric_kvk_kp, max.kp_min, max.kp)}`;
+        tr.appendChild(tdKP);
+
+        const tdT4T5 = document.createElement('td');
+        tdT4T5.textContent = formatShort(player.numeric_t4t5);
+        tdT4T5.dataset.heatmapColor = 'green';
+        tdT4T5.style = `--heatmap-opacity: ${normalize(player.numeric_t4t5, max.t4t5_min, max.t4t5)}`;
+        tr.appendChild(tdT4T5);
+
+        const tdDeads = document.createElement('td');
+        tdDeads.textContent = formatNumber(player.numeric_deads);
+        tdDeads.dataset.heatmapColor = 'red';
+        tdDeads.style = `--heatmap-opacity: ${normalize(player.numeric_deads, max.deads_min, max.deads)}`;
+        tr.appendChild(tdDeads);
+
+        const tdDKP = document.createElement('td');
+        tdDKP.textContent = `${player['DKP % Complete']}%`;
+        tdDKP.dataset.heatmapColor = 'blue';
+        tdDKP.style = `--heatmap-opacity: ${normalize(player.numeric_dkp_percent, max.dkp_min, max.dkp)}`;
+        tr.appendChild(tdDKP);
+
+        tbody.appendChild(tr);
+    });
+    
     table.appendChild(tbody);
-    dom.snapshotTableWrapper.appendChild(table);
-    
-    // 4. Add event listeners
-    dom.snapshotTableWrapper.querySelectorAll('.compare-checkbox').forEach(box => {
-        box.addEventListener('change', handleCheck);
-    });
-    dom.snapshotTableWrapper.querySelectorAll('th[data-sort]').forEach(th => {
-        th.addEventListener('click', handleSort);
-    });
+    snapshotTableWrapper.appendChild(table);
 }
 
-/**
- * Renders the grid of player cards
- * @param {Array<Object>} data The array of player data.
- */
-function renderPlayerCards(data) {
-    const cards = data.map(player => {
-        const govId = player.id;
-        const govName = player.name;
-        const kvkKP = player.calcKP;
-        const dkpPercent = player.dkpPercent;
+function renderPlayerCards() {
+    playerGrid.innerHTML = '';
+    if (calculatedPlayerData.length === 0) {
+        playerGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results.</p>';
+        return;
+    }
+    
+    const fragment = document.createDocumentFragment();
+    calculatedPlayerData.forEach(player => {
+        const govId = player['Governor ID'];
+        const govName = player['Governor Name'];
+        const kvkKP = player.numeric_kvk_kp;
+        const dkpPercent = player['DKP % Complete'];
 
-        const isChecked = selectedPlayers.includes(govId);
+        const card = document.createElement('div');
+        card.className = 'player-card';
+        card.dataset.id = govId;
+        card.dataset.name = govName.toLowerCase();
 
-        return `
-            <div class="player-card" data-id="${govId}" data-name="${govName.toLowerCase()}">
-                <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
-                <h3 class="player-name" title="${govName}">${govName}</h3>
-                <p class="player-id">${govId}</p>
-                <div class="grid grid-cols-2 gap-2 mt-4">
-                    <div>
-                        <span class="stat-label">KvK KP</span>
-                        <p class="player-stat">${formatShort(kvkKP)}</p>
-                    </div>
-                    <div>
-                        <span class="stat-label">DKP %</span>
-                        <p class="player-stat">${dkpPercent}%</p>
-                    </div>
+        // Removed checkbox logic
+        card.innerHTML = `
+            <h3 class="player-name" title="${govName}">${govName}</h3>
+            <p class="player-id">${govId}</p>
+            <div class="grid grid-cols-2 gap-2 mt-4">
+                <div>
+                    <span class="stat-label">KvK KP</span>
+                    <p class="player-stat">${formatShort(kvkKP)}</p>
+                </div>
+                <div>
+                    <span class="stat-label">DKP %</span>
+                    <p class="player-stat">${dkpPercent}%</p>
                 </div>
             </div>
         `;
+        
+        fragment.appendChild(card);
     });
-    
-    dom.playerGrid.innerHTML = cards.join('');
-    
-    // Add event listeners to new checkboxes
-    dom.playerGrid.querySelectorAll('.compare-checkbox').forEach(box => {
-        box.addEventListener('change', handleCheck);
-    });
+    playerGrid.appendChild(fragment);
 }
 
-/**
- * Renders the grid of "Fighter" cards
- * @param {Array<Object>} data The array of filtered fighter data.
- */
-function renderFighterCards(data) {
-    if (data.length === 0) {
-        dom.fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">No fighters found. (Min 20M Power & >0 KvK KP)</p>';
+function renderFighterCards() {
+    fighterGrid.innerHTML = '';
+    if (fighterData.length === 0) {
+        fighterGrid.innerHTML = '<p class="text-gray-500 col-span-full text-center p-8">Load or create a DKP profile to see results. (Min 20M Power & >0 KvK KP)</p>';
         return;
     }
 
-    const cards = data.map((player, index) => {
-        const govId = player.id;
-        const govName = player.name;
-        const kvkKP = player.calcKP;
-        const dkpPercent = player.dkpPercent;
-        const power = player.startPower;
-        const isChecked = selectedPlayers.includes(govId);
+    const fragment = document.createDocumentFragment();
+    fighterData.forEach((player, index) => {
+        const govId = player['Governor ID'];
+        const govName = player['Governor Name'];
+        const kvkKP = player.numeric_kvk_kp;
+        const dkpPercent = player['DKP % Complete'];
+        const power = player.numeric_power;
 
-        return `
-            <div class="player-card" data-id="${govId}" data-name="${govName.toLowerCase()}">
-                <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
-                <span class="absolute top-2 left-2 text-xl font-bold text-gray-400">#${index + 1}</span>
-                <h3 class="player-name" title="${govName}">${govName}</h3>
-                <p class="player-id">${govId}</p>
-                <div class="grid grid-cols-3 gap-1 mt-4 text-xs">
-                    <div>
-                        <span class="stat-label">DKP %</span>
-                        <p class="player-stat text-blue-600">${dkpPercent}%</p>
-                    </div>
-                    <div>
-                        <span class="stat-label">KvK KP</span>
-                        <p class="player-stat">${formatShort(kvkKP)}</p>
-                    </div>
-                    <div>
-                        <span class="stat-label">Power</span>
-                        <p class="player-stat">${formatShort(power)}</p>
-                    </div>
+        const card = document.createElement('div');
+        card.className = 'player-card';
+        card.dataset.id = govId;
+        card.dataset.name = govName.toLowerCase();
+        
+        // Removed checkbox logic
+        card.innerHTML = `
+            <span class="absolute top-2 left-2 text-xl font-bold text-gray-400">#${index + 1}</span>
+            <h3 class="player-name" title="${govName}">${govName}</h3>
+            <p class="player-id">${govId}</p>
+            <div class="grid grid-cols-3 gap-1 mt-4 text-xs">
+                <div>
+                    <span class="stat-label">DKP %</span>
+                    <p class="player-stat text-blue-600">${dkpPercent}%</p>
+                </div>
+                <div>
+                    <span class="stat-label">KvK KP</span>
+                    <p class="player-stat">${formatShort(kvkKP)}</p>
+                </div>
+                <div>
+                    <span class="stat-label">Power</span>
+                    <p class="player-stat">${formatShort(power)}</p>
                 </div>
             </div>
         `;
-    });
 
-    dom.fighterGrid.innerHTML = cards.join('');
-
-    // Add event listeners
-    dom.fighterGrid.querySelectorAll('.compare-checkbox').forEach(box => {
-        box.addEventListener('change', handleCheck);
+        fragment.appendChild(card);
     });
+    fighterGrid.appendChild(fragment);
 }
 
-/**
- * Renders the D3 scatter chart.
- */
+// --- Chart Functions (Updated) ---
+
+function getQuadrant(player, averages) {
+    const kills = player.numeric_t4t5;
+    const deads = player.numeric_deads;
+
+    if (kills >= averages.kills && deads <= averages.deads) {
+        return { name: 'Hero', color: '#3b82f6' }; // Blue
+    }
+    if (kills >= averages.kills && deads > averages.deads) {
+        return { name: 'Warrior', color: '#22c55e' }; // Green
+    }
+    if (kills < averages.kills && deads > averages.deads) {
+        return { name: 'Feeder', color: '#ef4444' }; // Red
+    }
+    return { name: 'Slacker', color: '#6b7280' }; // Gray
+}
+
 function renderScatterChart() {
-    // FIX: Only render if the tab is visible and not already rendered
-    if (dom.chartCanvas._chartRendered) return;
+    const canvas = d3.select("#scatter-chart").node();
+    const container = d3.select(".chart-container").node();
 
-    const chartData = allPlayerData.filter(p => p.calcKP > 0 || p.deads > 0);
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+    
+    canvas.width = width * 2; 
+    canvas.height = height * 2;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(2, 2);
+
+    const chartData = calculatedPlayerData.filter(p => p.numeric_t4t5 > 0 || p.numeric_deads > 0);
     if (chartData.length === 0) {
-        dom.chartContainer.innerHTML = '<p class="text-gray-500 text-center p-8">No data to display in chart.</p>';
+        ctx.font = "16px Inter";
+        ctx.fillStyle = "#6b7280";
+        ctx.textAlign = "center";
+        ctx.fillText("Load or create a DKP profile to see chart data.", width / 2, height / 2);
         return;
     }
-    
-    // Ensure canvas is back
-    if (!document.getElementById('scatter-chart')) {
-        dom.chartContainer.innerHTML = '<canvas id="scatter-chart"></canvas><div id="chart-tooltip" class="hidden absolute p-2 bg-gray-800 text-white rounded-lg shadow-lg text-sm"></div>';
-        // Re-bind dom elements
-        dom.chartCanvas = document.getElementById('scatter-chart');
-        dom.chartTooltip = document.getElementById('chart-tooltip');
-    }
 
-    const containerRect = dom.chartContainer.getBoundingClientRect();
-    if (containerRect.width === 0 || containerRect.height === 0) {
-        console.error("Chart container has no size. Cannot render.");
-        return; // Don't render if container isn't visible
-    }
+    const margin = { top: 30, right: 30, bottom: 50, left: 60 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
 
-    // Set canvas size based on container
-    const canvas = dom.chartCanvas;
-    canvas.width = containerRect.width * 2; // High-DPI
-    canvas.height = containerRect.height * 2;
-    canvas.style.width = `${containerRect.width}px`;
-    canvas.style.height = `${containerRect.height}px`;
-    
-    const ctx = canvas.getContext("2d");
-    ctx.scale(2, 2); // Scale context for High-DPI
+    // Calculate Averages
+    const totalKills = d3.sum(chartData, d => d.numeric_t4t5);
+    const totalDeads = d3.sum(chartData, d => d.numeric_deads);
+    const avgKills = totalKills / chartData.length;
+    const avgDeads = totalDeads / chartData.length;
+    const averages = { kills: avgKills, deads: avgDeads };
 
-    const margin = { top: 20, right: 20, bottom: 50, left: 60 };
-    const innerWidth = containerRect.width - margin.left - margin.right;
-    const innerHeight = containerRect.height - margin.top - margin.bottom;
-
-    // --- Averages for Quadrant Lines ---
-    const avgKills = d3.mean(chartData, d => d.t4t5Kills);
-    const avgDeads = d3.mean(chartData, d => d.deads);
-
-    // Data for chart
+    // Create Plot Data
     const plotData = chartData.map(d => {
-        let quadrant = '';
-        if (d.t4t5Kills >= avgKills && d.deads < avgDeads) quadrant = 'hero';
-        else if (d.t4t5Kills >= avgKills && d.deads >= avgDeads) quadrant = 'warrior';
-        else if (d.t4t5Kills < avgKills && d.deads >= avgDeads) quadrant = 'feeder';
-        else quadrant = 'slacker';
-
+        const quadrant = getQuadrant(d, averages);
         return {
-            x: d.t4t5Kills,
-            y: d.deads,
-            dkpPercent: d.dkpPercent,
-            name: d.name,
-            quadrant: quadrant
+            x: d.numeric_t4t5,
+            y: d.numeric_deads,
+            name: d['Governor Name'],
+            dkpPercent: d['DKP % Complete'],
+            quadrant: quadrant.name,
+            color: quadrant.color
         };
     });
 
-    // Color Scale based on quadrant
-    const color = d3.scaleOrdinal()
-        .domain(['hero', 'warrior', 'feeder', 'slacker'])
-        .range(['#3b82f6', '#22c55e', '#ef4444', '#6b7280']); // blue, green, red, gray
-
-    // --- FIX: Smart Scales (95th Percentile) ---
-    // This stops outliers from bunching up the data
+    // Scales (95th percentile)
     const xMax = d3.quantile(plotData.map(d => d.x).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.x) || 1;
     const yMax = d3.quantile(plotData.map(d => d.y).sort(d3.ascending), 0.95) * 1.05 || d3.max(plotData, d => d.y) || 1;
-const x = d3.scaleLinear()
-        .domain([0, xMax])
-        .range([0, innerWidth]);
 
-    const y = d3.scaleLinear()
-        .domain([0, yMax])
-        .range([innerHeight, 0]);
+    const x = d3.scaleLinear().domain([0, xMax]).range([0, innerWidth]);
+    const y = d3.scaleLinear().domain([0, yMax]).range([innerHeight, 0]);
     
     const radius = 5;
 
-    // --- Draw Chart ---
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // --- Draw ---
     ctx.save();
     ctx.translate(margin.left, margin.top);
     
-    // --- Draw Quadrant Lines & Labels ---
-    ctx.strokeStyle = '#9ca3af';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-
-    // Y-Axis (Average Kills)
-    const avgXPos = x(avgKills);
-    ctx.beginPath();
-    ctx.moveTo(avgXPos, 0);
-    ctx.lineTo(avgXPos, innerHeight);
-    ctx.stroke();
-
-    // X-Axis (Average Deads)
-    const avgYPos = y(avgDeads);
-    ctx.beginPath();
-    ctx.moveTo(0, avgYPos);
-    ctx.lineTo(innerWidth, avgYPos);
-    ctx.stroke();
+    // Quadrant Lines
+    const avgX = x(avgKills);
+    const avgY = y(avgDeads);
     
+    ctx.beginPath();
+    ctx.strokeStyle = '#aaa';
+    ctx.setLineDash([5, 5]);
+    ctx.moveTo(avgX, 0); ctx.lineTo(avgX, innerHeight);
+    ctx.moveTo(0, avgY); ctx.lineTo(innerWidth, avgY);
+    ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '10px Roboto';
-
-    ctx.textAlign = 'right';
-    ctx.fillText('Heroes', avgXPos - 5, avgYPos + 10);
-    ctx.fillText('Warriors', avgXPos - 5, avgYPos - 5);
-    ctx.textAlign = 'left';
-    ctx.fillText('Slackers', avgXPos + 5, avgYPos + 10);
-    ctx.fillText('Feeders', avgXPos + 5, avgYPos - 5);
     
+    // Quadrant Labels
+    ctx.font = "bold 14px Inter";
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = "#3b82f6"; ctx.fillText("Heroes", avgX + 10, avgY + 20);
+    ctx.fillStyle = "#22c55e"; ctx.fillText("Warriors", avgX + 10, avgY - 10);
+    ctx.fillStyle = "#ef4444"; ctx.fillText("Feeders", avgX - 10, avgY - 10);
+    ctx.textAlign = "end";
+    ctx.fillStyle = "#6b7280"; ctx.fillText("Slackers", avgX - 10, avgY + 20);
+    ctx.globalAlpha = 1.0;
+    ctx.textAlign = "start";
+
     // Draw Points
     plotData.forEach(d => {
         ctx.beginPath();
-        ctx.arc(x(d.x), y(d.y), radius, 0, 2 * Math.PI, false);
-        ctx.fillStyle = color(d.quadrant);
+        const plotX = x(Math.min(d.x, xMax));
+        const plotY = y(Math.min(d.y, yMax));
+        ctx.arc(plotX, plotY, radius, 0, 2 * Math.PI, false);
+        ctx.fillStyle = d.color;
         ctx.globalAlpha = 0.7;
         ctx.fill();
     });
-    
     ctx.globalAlpha = 1.0;
     
     // Draw Axes
     const xAxis = d3.axisBottom(x).ticks(5).tickFormat(d3.format("~s"));
     const yAxis = d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s"));
-
     drawAxis(ctx, xAxis, 0, innerHeight, innerWidth, innerHeight);
     drawAxis(ctx, yAxis, 0, 0, 0, innerHeight);
 
     // Axis Labels
     ctx.fillStyle = "#000";
-    ctx.font = "14px Roboto";
+    ctx.font = "14px Inter";
     ctx.textAlign = "center";
     ctx.fillText("T4 + T5 Kills", innerWidth / 2, innerHeight + margin.bottom - 10);
     
@@ -682,14 +745,7 @@ const x = d3.scaleLinear()
     canvas._chartRendered = true;
 }
 
-/**
- * Helper to draw D3 axes on Canvas
- * @param {CanvasRenderingContext2D} ctx The canvas context.
- * @param {d3.Axis} axis The d3 axis generator.
- * @param {number} x X position to draw at.
- * @param {number} y Y position to draw at.
- */
-function drawAxis(ctx, axis, x, y) {
+function drawAxis(ctx, axis, x, y, width, height) {
     const tempContainer = d3.select(document.createElement("g"));
     tempContainer.call(axis);
     
@@ -697,7 +753,7 @@ function drawAxis(ctx, axis, x, y) {
     ctx.translate(x, y);
     ctx.strokeStyle = "#aaa";
     ctx.fillStyle = "#555";
-    ctx.font = "12px Roboto";
+    ctx.font = "12px Inter";
 
     tempContainer.selectAll("line").each(function() {
         const line = d3.select(this);
@@ -709,10 +765,7 @@ function drawAxis(ctx, axis, x, y) {
 
     tempContainer.selectAll("text").each(function() {
         const text = d3.select(this);
-        ctx.textAlign = text.attr("text-anchor") === "middle" ? "center" : "start";
-        if (text.attr("text-anchor") === "end") {
-             ctx.textAlign = "end";
-        }
+        ctx.textAlign = text.attr("text-anchor") === "middle" ? "center" : text.attr("text-anchor");
         ctx.textBaseline = "middle";
         ctx.fillText(text.text(), parseFloat(text.attr("x")), parseFloat(text.attr("y")));
     });
@@ -720,54 +773,42 @@ function drawAxis(ctx, axis, x, y) {
     ctx.restore();
 }
 
-/**
- * Sets up hover/tooltip for the chart
- * @param {Array<Object>} plotData The data used for the plot.
- * @param {d3.ScaleLinear} xScale The d3 x-scale.
- * @param {d3.ScaleLinear} yScale The d3 y-scale.
- * @param {HTMLCanvasElement} canvas The canvas element.
- * @param {Object} margin The chart margins.
- */
 function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
-    const tooltip = dom.chartTooltip;
+    const tooltip = document.getElementById('chart-tooltip');
     
     const quadtree = d3.quadtree()
         .x(d => xScale(d.x))
         .y(d => yScale(d.y))
         .addAll(plotData);
 
-    const onMouseMove = (e) => {
+    canvas.addEventListener('mousemove', (e) => {
         const rect = canvas.getBoundingClientRect();
-        // d3.pointer correctly scales mouse position to canvas coordinates
-        const [x, y] = d3.pointer(e, canvas); 
-        
-        // Find nearest point within 10px radius (scaled radius)
-        const [target] = quadtree.find(x, y, 10); 
+        const x = (e.clientX - rect.left);
+        const y = (e.clientY - rect.top);
+
+        const [target] = quadtree.find(
+            (x * 2) - margin.left, (y * 2) - margin.top, 10 * 2
+        );
 
         if (target) {
             canvas.style.cursor = 'pointer';
             tooltip.innerHTML = `
                 <strong>${target.name}</strong><br>
-                Kills: ${formatShort(target.x)}<br>
+                <span style="color: ${target.color}; font-weight: 700;">(${target.quadrant})</span><br>
+                T4/T5 Kills: ${formatShort(target.x)}<br>
                 Deads: ${formatNumber(target.y)}<br>
                 DKP %: ${target.dkpPercent}%
             `;
-            tooltip.classList.remove('hidden');
             tooltip.classList.add('show');
             
-            // Position tooltip relative to the *container* not the canvas element
-            // Use event.clientX/Y to get viewport coordinates, then adjust
-            let tooltipX = (e.clientX - rect.left) + 15;
-            let tooltipY = (e.clientY - rect.top) + 15;
+            let tooltipX = x + 10;
+            let tooltipY = y + 10;
             
-            // Prevent tooltip from going off the right edge
             if (tooltipX + tooltip.offsetWidth > rect.width) {
-                tooltipX = (e.clientX - rect.left) - tooltip.offsetWidth - 15;
+                tooltipX = x - tooltip.offsetWidth - 10;
             }
-            
-            // Prevent tooltip from going off the bottom edge
             if (tooltipY + tooltip.offsetHeight > rect.height) {
-                tooltipY = (e.clientY - rect.top) - tooltip.offsetHeight - 15;
+                tooltipY = y - tooltip.offsetHeight - 10;
             }
 
             tooltip.style.left = `${tooltipX}px`;
@@ -777,48 +818,28 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
             canvas.style.cursor = 'default';
             tooltip.classList.remove('show');
         }
-    };
-    
-    canvas.addEventListener('mousemove', onMouseMove);
+    });
+
     canvas.addEventListener('mouseleave', () => {
         canvas.style.cursor = 'default';
         tooltip.classList.remove('show');
     });
 }
 
-/**
- * Redraws the chart on window resize.
- */
-function handleResize() {
-    const canvas = dom.chartCanvas;
-    if (canvas && canvas._chartRendered) {
-        canvas._chartRendered = false; // Mark for redraw
-        renderScatterChart(); // Redraw
-    }
-}
-
 
 // --- Data Sorting ---
 
-/**
- * Handles a click on a sortable table header.
- * @param {Event} e The click event.
- */
 function handleSort(e) {
     const newColumn = e.target.dataset.sort;
     if (currentSort.column === newColumn) {
         currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
     } else {
         currentSort.column = newColumn;
-        currentSort.direction = 'desc'; // Default to descending
+        currentSort.direction = 'desc';
     }
-    renderSnapshotTable(allPlayerData); // Re-render the table
+    renderSnapshotTable();
 }
 
-/**
- * Sorts the player data array in place based on currentSort state.
- * @param {Array<Object>} data The array of player data.
- */
 function sortData(data) {
     data.sort((a, b) => {
         let valA, valB;
@@ -827,7 +848,6 @@ function sortData(data) {
             valA = a.name.toLowerCase();
             valB = b.name.toLowerCase();
         } else {
-            // Use pre-calculated numeric fields
             valA = a[currentSort.column];
             valB = b[currentSort.column];
         }
@@ -839,15 +859,12 @@ function sortData(data) {
 }
 
 
-// --- Search ---
+// --- Search Functionality ---
 
-/**
- * Attaches event listeners to all search bars.
- */
 function setupSearch() {
-    Object.keys(dom.searchBars).forEach(key => {
-        if (dom.searchBars[key]) {
-            dom.searchBars[key].addEventListener('input', (e) => {
+    Object.keys(searchBars).forEach(key => {
+        if (searchBars[key]) {
+            searchBars[key].addEventListener('input', (e) => {
                 const query = e.target.value.toLowerCase().trim();
                 filterViews(query, key);
             });
@@ -855,207 +872,69 @@ function setupSearch() {
     });
 }
 
-/**
- * Filters all data views based on a search query.
- * @param {string} query The search query.
- * @param {string} sourceTab The tab the search originated from.
- */
 function filterViews(query, sourceTab) {
-    // Filter Snapshot Table
-    const allRows = dom.snapshotTableWrapper.querySelectorAll('tbody tr');
-    allRows.forEach(row => {
+    const rows = snapshotTableWrapper.querySelectorAll('tbody tr');
+    rows.forEach(row => {
         const name = row.dataset.name;
         const id = row.dataset.id;
         row.style.display = (name.includes(query) || id.includes(query)) ? '' : 'none';
     });
     
-    // Filter Player Cards
-    const allCards = dom.playerGrid.querySelectorAll('.player-card');
-    allCards.forEach(card => {
+    const cards = playerGrid.querySelectorAll('.player-card');
+    cards.forEach(card => {
         const name = card.dataset.name;
         const id = card.dataset.id;
         card.style.display = (name.includes(query) || id.includes(query)) ? 'block' : 'none';
     });
 
-    // Filter Fighter Cards
-    const allFighterCards = dom.fighterGrid.querySelectorAll('.player-card');
-    allFighterCards.forEach(card => {
+    const fighterCards = fighterGrid.querySelectorAll('.player-card');
+    fighterCards.forEach(card => {
         const name = card.dataset.name;
         const id = card.dataset.id;
         card.style.display = (name.includes(query) || id.includes(query)) ? 'block' : 'none';
     });
 
-    // Sync other search bars
-    Object.keys(dom.searchBars).forEach(key => {
-        if (key !== sourceTab && dom.searchBars[key]) {
-            dom.searchBars[key].value = query;
+    Object.keys(searchBars).forEach(key => {
+        if (key !== sourceTab && searchBars[key]) {
+            searchBars[key].value = query;
         }
     });
 }
 
-
-// --- Player Comparison ---
-
-/**
- * Handles checking/unchecking a player compare checkbox.
- * @param {Event} e The change event.
- */
-function handleCheck(e) {
-    const id = e.target.dataset.id;
-    if (e.target.checked) {
-        if (selectedPlayers.length < 3) {
-            selectedPlayers.push(id);
-        } else {
-            e.target.checked = false; // Don't allow more than 3
-        }
-    } else {
-        selectedPlayers = selectedPlayers.filter(pId => pId !== id);
-    }
-    updateCompareState();
-}
-
-/**
- * Updates the state of all compare checkboxes and the compare tab.
- */
-function updateCompareState() {
-    dom.compareBtn.textContent = `Compare (${selectedPlayers.length})`;
-
-    // Sync checkboxes across all tabs
-    const allCheckboxes = document.querySelectorAll('.compare-checkbox');
-    allCheckboxes.forEach(box => {
-        box.checked = selectedPlayers.includes(box.dataset.id);
-    });
-
-    // Disable/enable checkboxes
-    if (selectedPlayers.length >= 3) {
-        allCheckboxes.forEach(box => {
-            if (!box.checked) box.disabled = true;
-        });
-    } else {
-        allCheckboxes.forEach(box => box.disabled = false);
-    }
-    
-    renderComparison();
-}
-
-/**
- * Renders the side-by-side comparison table.
- */
-function renderComparison() {
-    if (selectedPlayers.length === 0) {
-        dom.compareWrapper.innerHTML = '<p class="text-gray-500 text-center p-8">Select players from any tab to compare them here.</p>';
-        return;
-    }
-
-    const playersToCompare = allPlayerData.filter(p => selectedPlayers.includes(p.id));
-    
-    // Define metrics to compare: [Label, key or function, higherIsBetter?, format]
-    const metrics = [
-        ['Start Power', 'startPower', true, 'short'],
-        ['Power +/-', 'powerChange', true, 'number'],
-        ['Troop Power +/-', 'troopPowerChange', true, 'number'],
-        ['KvK Deads', 'deads', false, 'number'], // Lower is better
-        ['KvK KP (Formula)', 'calcKP', true, 'short'],
-        ['T4+T5 Kills', 't4t5Kills', true, 'short'],
-        ['T1-T3 Kills', (p) => p.t1kills + p.t2kills + p.t3kills, true, 'short'],
-        ['DKP % Complete', 'dkpPercent', true, 'percent'],
-        ['Total DKP', 'dkp', true, 'short'],
-        ['Target DKP', 'targetDKP', true, 'short'],
-        ['Raw Scan KP', 'rawKP', true, 'short']
-    ];
-
-    let tableHTML = '<table class="compare-table"><thead><tr><th>Metric</th>';
-    playersToCompare.forEach(p => {
-        tableHTML += `<th>${p.name}</th>`;
-    });
-    for (let i = 0; i < 3 - playersToCompare.length; i++) tableHTML += '<th>-</th>';
-    tableHTML += '</tr></thead><tbody>';
-
-    metrics.forEach(([label, key, higherIsBetter, format]) => {
-        let row = `<tr><td>${label}</td>`;
-        let values = [];
-        
-        playersToCompare.forEach(p => {
-            const val = (typeof key === 'function') ? key(p) : p[key];
-            let formatted;
-            if (format === 'short') formatted = formatShort(val);
-            else if (format === 'percent') formatted = `${val}%`;
-            else formatted = formatNumber(val);
-            
-            values.push({ val, formatted });
-        });
-// Find winner/loser
-        const numericVals = values.map(v => v.val);
-        const targetVal = higherIsBetter ? Math.max(...numericVals) : Math.min(...numericVals);
-        const worstVal = higherIsBetter ? Math.min(...numericVals) : Math.max(...numericVals);
-
-        values.forEach(v => {
-            let cellClass = '';
-            // Only assign winner/loser if there's more than one player and they aren't the same value
-            if (values.length > 1 && targetVal !== worstVal) {
-                if (v.val === targetVal) cellClass = 'stat-winner';
-                else if (v.val === worstVal) cellClass = 'stat-loser';
-            }
-            row += `<td class="${cellClass}">${v.formatted || '0'}</td>`;
-        });
-        
-        for (let i = 0; i < 3 - playersToCompare.length; i++) row += '<td>-</td>';
-        row += '</tr>';
-        tableHTML += row;
-    });
-
-    tableHTML += '</tbody></table>';
-    dom.compareWrapper.innerHTML = tableHTML;
-}
-
+// Removed Comparison Functionality Logic
 
 // --- Tab Switching ---
 
-/**
- * Activates a specific tab and deactivates others.
- * @param {string | null} tabName The key of the tab to activate (or null to hide all).
- */
 function activateTab(tabName) {
-    let tabWasActivated = false;
-    Object.keys(dom.tabs).forEach(key => {
+    if (!tabName) {
+        tabName = 'manageData';
+    }
+    
+    Object.keys(tabs).forEach(key => {
         const isTarget = key === tabName;
-        dom.tabs[key].btn.classList.toggle('active', isTarget);
-        dom.tabs[key].content.classList.toggle('active', isTarget);
+        tabs[key].btn.classList.toggle('active', isTarget);
+        tabs[key].content.classList.toggle('active', isTarget);
 
-        if (isTarget) {
-            tabWasActivated = true;
-            // On-demand rendering for chart
-            if (key === 'chart' && allPlayerData.length > 0) {
-                renderScatterChart();
-            }
-            // On-demand population for kd compare dropdowns
-            if (key === 'kdCompare') {
-                populateKdCompareDropdowns();
-            }
+        if (key === 'chart' && isTarget) {
+            renderScatterChart();
         }
     });
-    if (!tabWasActivated) {
-         console.warn(`Attempted to activate unknown tab: ${tabName}`);
+}
+
+// --- Resize Handling ---
+function handleResize() {
+    if (tabs.chart.content.classList.contains('active')) {
+        renderScatterChart();
     }
 }
 
-
 // --- Local Storage Profile Management ---
-const DB_KEY = 'UNITY_DKP_PROFILES_V2'; // Use a new key for V2
+const DB_KEY = 'UNITY_DKP_PROFILES';
 
-/**
- * Gets all saved profiles from localStorage.
- * @returns {Object} An object where keys are profile names.
- */
 function getSavedProfiles() {
     return JSON.parse(localStorage.getItem(DB_KEY) || '{}');
 }
 
-/**
- * Saves a single profile to localStorage.
- * @param {Object} profile The profile object to save.
- * @returns {boolean} True on success, false on failure.
- */
 function saveProfile(profile) {
     try {
         const profiles = getSavedProfiles();
@@ -1064,80 +943,63 @@ function saveProfile(profile) {
         return true;
     } catch (e) {
         console.error("Error saving to localStorage", e);
-        setStatus("Error: Could not save profile. Browser storage may be full.", true);
+        setStatus("Error: Could not save profile. Storage may be full.", true);
         return false;
     }
 }
 
-/**
- * Loads a single profile from localStorage by name.
- * @param {string} profileName The name of the profile to load.
- * @returns {Object | null} The profile object or null if not found.
- */
 function loadProfile(profileName) {
     const profiles = getSavedProfiles();
     return profiles[profileName] || null;
 }
 
-/**
- * Deletes a single profile from localStorage by name.
- * @param {string} profileName The name of the profile to delete.
- */
 function deleteProfile(profileName) {
     const profiles = getSavedProfiles();
     delete profiles[profileName];
     localStorage.setItem(DB_KEY, JSON.stringify(profiles));
-    populateProfileDropdown(); // Refresh dropdown
-    populateKdCompareDropdowns(); // Refresh compare dropdown
+    populateProfileDropdown();
+    populateKdCompareDropdowns();
 }
 
-/**
- * Populates the "Load Profile" dropdown list.
- */
 function populateProfileDropdown() {
     const profiles = getSavedProfiles();
     const profileNames = Object.keys(profiles);
     
     if (profileNames.length === 0) {
-        dom.profileSelect.innerHTML = '<option value="">-- No profiles found --</option>';
+        profileSelect.innerHTML = '<option value="">-- No profiles found --</option>';
         return;
     }
 
-    dom.profileSelect.innerHTML = profileNames
-        .map(name => `<option value="${name}">${name}</option>`)
-        .join('');
+    // Sort names alphabetically
+    profileNames.sort((a, b) => a.localeCompare(b));
+    profileSelect.innerHTML = profileNames.map(name => `<option value="${name}">${name}</option>`).join('');
 }
 
 
 // --- Kingdom Compare Logic ---
-
-/**
- * Populates the two dropdowns in the "Kd Compare" tab.
- */
 function populateKdCompareDropdowns() {
     const profiles = getSavedProfiles();
     const profileNames = Object.keys(profiles);
     
     if (profileNames.length === 0) {
-        dom.kdProfileSelectA.innerHTML = '<option value="">-- No profiles --</option>';
-        dom.kdProfileSelectB.innerHTML = '<option value="">-- No profiles --</option>';
+        kdProfileSelectA.innerHTML = '<option value="">-- No profiles --</option>';
+        kdProfileSelectB.innerHTML = '<option value="">-- No profiles --</option>';
         return;
     }
 
+    // Sort names alphabetically
+    profileNames.sort((a, b) => a.localeCompare(b));
     const options = profileNames.map(name => `<option value="${name}">${name}</option>`).join('');
-    dom.kdProfileSelectA.innerHTML = `<option value="">-- Select Profile A --</option>${options}`;
-    dom.kdProfileSelectB.innerHTML = `<option value="">-- Select Profile B --</option>${options}`;
+    kdProfileSelectA.innerHTML = `<option value="">-- Select Profile A --</option>${options}`;
+    kdProfileSelectB.innerHTML = `<option value="">-- Select Profile B --</option>${options}`;
 }
 
-/**
- * Runs the kingdom-to-kingdom comparison.
- */
 function runKdCompare() {
-    const profileNameA = dom.kdProfileSelectA.value;
-    const profileNameB = dom.kdProfileSelectB.value;
+    const profileNameA = kdProfileSelectA.value;
+    const profileNameB = kdProfileSelectB.value;
 
     if (!profileNameA || !profileNameB) {
-        dom.kdCompareResult.innerHTML = '<p class="text-gray-500 text-center p-8">Please select two profiles to compare.</p>';
+        kdCompareResult.innerHTML = '<p class="text-gray-500 text-center p-8">Please select two profiles to compare.</p>';
         return;
     }
 
@@ -1145,7 +1007,7 @@ function runKdCompare() {
     const profileB = loadProfile(profileNameB);
 
     if (!profileA || !profileB) {
-        setStatus("Error: Could not load one or more profiles for comparison.", true);
+        setStatus("Error: Could not load one or more profiles.", true);
         return;
     }
 
@@ -1157,11 +1019,6 @@ function runKdCompare() {
     renderKdCompareCard(profileNameA, summaryA, profileNameB, summaryB);
 }
 
-/**
- * Calculates summary stats for an entire profile's player data.
- * @param {Array<Object>} playerData The array of player data.
- * @returns {Object} An object with summary statistics.
- */
 function calculateProfileSummary(playerData) {
     const summary = {
         governors: playerData.length,
@@ -1192,13 +1049,6 @@ function calculateProfileSummary(playerData) {
     return summary;
 }
 
-/**
- * Renders the "Baseball Card" for the Kd Compare tab.
- * @param {string} nameA Name of profile A.
- * @param {Object} statsA Summary stats for profile A.
- * @param {string} nameB Name of profile B.
- * @param {Object} statsB Summary stats for profile B.
- */
 function renderKdCompareCard(nameA, statsA, nameB, statsB) {
     const metrics = [
         { title: '# Governors', key: 'governors', higherIsBetter: true, format: 'number' },
@@ -1209,7 +1059,7 @@ function renderKdCompareCard(nameA, statsA, nameB, statsB) {
         { title: 'Total T4 Kills', key: 'totalT4Kills', higherIsBetter: true, format: 'short' },
         { title: 'Total T5 Kills', key: 'totalT5Kills', higherIsBetter: true, format: 'short' },
         { title: 'Total Kills', key: 'totalT4T5Kills', higherIsBetter: true, format: 'short' },
-        { title: 'Total Deads', key: 'totalDeads', higherIsBetter: false, format: 'number' }, // Lower is better
+        { title: 'Total Deads', key: 'totalDeads', higherIsBetter: false, format: 'number' },
         { title: 'Avg. DKP %', key: 'avgDKPPercent', higherIsBetter: true, format: 'percent' }
     ];
 
@@ -1261,178 +1111,41 @@ function renderKdCompareCard(nameA, statsA, nameB, statsB) {
         </div>
     `;
     
-    dom.kdCompareResult.innerHTML = cardHTML;
-}
-
-
-// --- Event Listeners & App Initialization ---
-
-/**
- * Sets the main status message for the user.
- * @param {string} message The message to display.
- * @param {boolean} isError True if the message is an error.
- */
-function setStatus(message, isError = false) {
-    dom.loadStatus.textContent = message;
-    dom.loadStatus.style.color = isError ? '#dc2626' : '#4b5563'; // red-600 or gray-600
-}
-
-/**
- * Attaches all primary event listeners to the DOM.
- */
-function initListeners() {
-    // Tab Listeners
-    Object.keys(dom.tabs).forEach(key => {
-        dom.tabs[key].btn.addEventListener('click', () => activateTab(key));
-    });
-    
-    // Search Listeners
-    setupSearch();
-
-    // Resize Listener
-    window.addEventListener('resize', debounce(handleResize, 300));
-    
-    // Manage Data Listeners
-    dom.runDKPBtn.addEventListener('click', handleSaveAndRun);
-    dom.loadProfileBtn.addEventListener('click', handleLoadProfile);
-    dom.deleteProfileBtn.addEventListener('click', handleDeleteProfile);
-
-    // Kingdom Compare Listener
-    dom.runKdCompareBtn.addEventListener('click', runKdCompare);
-}
-
-/**
- * Handles the "Save & Run Calculation" button click.
- */
-async function handleSaveAndRun() {
-    setStatus("Processing...");
-    dom.runDKPBtn.disabled = true;
-    
-    const profileName = dom.profileNameInput.value.trim();
-    const startFile = dom.startScanFile.files[0];
-    const endFile = dom.endScanFile.files[0];
-
-    if (!profileName || !startFile || !endFile) {
-        setStatus("Error: Profile Name, Start Scan, and End Scan files are all required.", true);
-        dom.runDKPBtn.disabled = false;
-        return;
-    }
-
-    try {
-        const startScanText = await readFileAsText(startFile);
-        const endScanText = await readFileAsText(endFile);
-        
-        const startScanData = parseCSV(startScanText);
-        const endScanData = parseCSV(endScanText);
-        
-        if (!startScanData || !endScanData) {
-            // parseCSV will have already set the error status
-            dom.runDKPBtn.disabled = false;
-            return;
-        }
-
-        const settings = {
-            t4mult: parseFloat(dom.settings.t4mult.value) || 0,
-            t5mult: parseFloat(dom.settings.t5mult.value) || 0,
-            deadsMult: parseFloat(dom.settings.deadsMult.value) || 0,
-            targetPercent: parseFloat(dom.settings.targetPercent.value) || 0,
-        };
-
-        // Run the DKP calculation
-        const calculatedData = runDKPCalculation(startScanData, endScanData, settings);
-        
-        // Save the *raw data* and *settings* to the profile
-        const profile = {
-            name: profileName,
-            startScanRaw: startScanText, // We save the raw text
-            endScanRaw: endScanText,     // We save the raw text
-            settings: settings,
-            data: calculatedData, // Save the calculated data as well
-            timestamp: new Date().toISOString()
-        };
-
-        if (saveProfile(profile)) {
-            allPlayerData = calculatedData;
-            currentProfileName = profileName;
-            setStatus(`Successfully saved and ran profile: ${profileName}`);
-            populateProfileDropdown();
-            dom.profileSelect.value = profileName;
-            renderAllTabs(allPlayerData);
-            activateTab('snapshot'); // Show the results
-        } else {
-            // Error handled by saveProfile
-        }
-        
-    } catch (e) {
-        console.error("Error running DKP:", e);
-        setStatus(`Error: Failed to read files or run calculation. (${e.message})`, true);
-    }
-    
-    dom.runDKPBtn.disabled = false;
-}
-
-/**
- * Handles the "Load Profile" button click.
- */
-function handleLoadProfile() {
-    const profileName = dom.profileSelect.value;
-    if (!profileName) {
-        setStatus("Please select a profile to load.", true);
-        return;
-    }
-
-    const profile = loadProfile(profileName);
-    
-    if (profile) {
-        allPlayerData = profile.data;
-        currentProfileName = profile.name;
-        
-        // Load settings into settings tab
-        dom.settings.t4mult.value = profile.settings.t4mult;
-        dom.settings.t5mult.value = profile.settings.t5mult;
-        dom.settings.deadsMult.value = profile.settings.deadsMult;
-        dom.settings.targetPercent.value = profile.settings.targetPercent;
-
-        // Fill in data for "Create" tab
-        dom.profileNameInput.value = profile.name;
-        // We can't re-populate the file inputs, so we just show a message
-        setStatus(`Loaded profile: ${profile.name}. (Last saved: ${new Date(profile.timestamp).toLocaleString()})`);
-
-        renderAllTabs(allPlayerData);
-        activateTab('snapshot'); // Show the results
-    } else {
-        setStatus(`Error: Could not find profile "${profileName}".`, true);
-    }
-}
-
-/**
- * Handles the "Delete Profile" button click.
- */
-function handleDeleteProfile() {
-    const profileName = dom.profileSelect.value;
-    if (!profileName) {
-        setStatus("Please select a profile to delete.", true);
-        return;
-    }
-
-    if (confirm(`Are you sure you want to permanently delete the profile "${profileName}"?`)) {
-        deleteProfile(profileName);
-        setStatus(`Deleted profile: ${profileName}`);
-        if (currentProfileName === profileName) {
-            // Clear the app if we deleted the loaded profile
-            allPlayerData = [];
-            currentProfileName = null;
-            renderAllTabs([]);
-            activateTab('manageData');
-        }
-    }
+    kdCompareResult.innerHTML = cardHTML;
 }
 
 // --- App Entry Point ---
 document.addEventListener('DOMContentLoaded', () => {
-    // This is the main entry point for the application.
-    initListeners();
+    // Safety check to ensure all DOM elements were found
+    if (!runDkpBtn) {
+        console.error("UNITY: Critical DOM elements not found. App cannot start.");
+        setStatus("Error: App failed to initialize. Check HTML file.", true);
+        return;
+    }
+    
+    // Wire up search
+    setupSearch();
+    
+    // Wire up Profile buttons
+    runDkpBtn.addEventListener('click', runDkpCalculation);
+    loadProfileBtn.addEventListener('click', handleLoadProfile);
+    deleteProfileBtn.addEventListener('click', handleDeleteProfile);
+    runKdCompareBtn.addEventListener('click', runKdCompare);
+    
+    // Wire up resize listener
+    window.addEventListener('resize', debounce(handleResize, 250));
+
+    // Tab Listeners
+    Object.keys(tabs).forEach(key => {
+        if (tabs[key] && tabs[key].btn) {
+            tabs[key].btn.addEventListener('click', () => activateTab(key));
+        }
+    });
+    
+    // Load profiles from storage on start
+    loadProfilesFromStorage();
     populateProfileDropdown();
-    activateTab('manageData'); // Start on the "Manage Data" tab
+    populateKdCompareDropdowns();
+    activateTab('manageData');
     setStatus("Welcome to UNITY. Please create a new profile or load an existing one.");
 });
