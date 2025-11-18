@@ -34,7 +34,7 @@
             <button id="btn-snapshot" class="tab-btn">Snapshot</button>
             <button id="btn-player-cards" class="tab-btn">Player Cards</button>
             <button id="btn-fighters" class="tab-btn">Fighters</button>
-            <!-- REMOVED COMPARE TAB -->
+            <!-- REMOVED COMPARE TAB BUTTON -->
             <button id="btn-chart" class="tab-btn">Chart</button>
             <!-- NEW TAB -->
             <button id="btn-kd-compare" class="tab-btn">Kd Compare</button>
@@ -43,7 +43,6 @@
         <!-- Manage Data Tab -->
         <div id="content-manage-data" class="tab-content active">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
                 <!-- Create New Profile -->
                 <div class="bg-gray-50 p-6 rounded-lg border">
                     <h2 class="text-2xl font-bold text-gray-800 mb-4">Create New DKP Profile</h2>
@@ -90,10 +89,8 @@
         <!-- Settings Tab -->
         <div id="content-settings" class="tab-content">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">DKP Settings</h2>
-            <p class="text-gray-600 mb-6">Adjust the multipliers below. These settings are saved *per-profile*. After changing, you must click "Save & Run" on the "Manage Data" tab to apply them.</p>
-            
+            <p class="text-gray-600 mb-6">Adjust the multipliers below. These settings are saved *per-profile*.</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Kill Point Settings -->
                 <div class="bg-gray-50 p-4 rounded-lg border">
                     <h3 class="text-lg font-semibold mb-3">Kill Point (KP) Formula</h3>
                     <div class="space-y-3">
@@ -107,8 +104,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- DKP Settings -->
                 <div class="bg-gray-50 p-4 rounded-lg border">
                     <h3 class="text-lg font-semibold mb-3">DKP Formula</h3>
                     <div class="space-y-3">
@@ -122,9 +117,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="mt-4 text-sm text-gray-500">
-                <p><strong>Note:</strong> Changes here are not applied automatically. Go to the "Manage Data" tab and click "Save & Run" to recalculate DKP with these new settings.</p>
             </div>
         </div>
 
@@ -158,28 +150,15 @@
             </div>
         </div>
 
-        <!-- REMOVED COMPARE TAB CONTENT -->
+        <!-- REMOVED Compare Tab Content -->
 
         <!-- Chart Tab -->
         <div id="content-chart" class="tab-content">
-            <!-- Chart Legend -->
             <div class="flex flex-wrap justify-center gap-4 mb-4">
-                <div class="flex items-center">
-                    <span class="w-4 h-4 rounded-full bg-blue-500 mr-2"></span>
-                    <span><b>Heroes</b> (High Kills, Low Deads)</span>
-                </div>
-                <div class="flex items-center">
-                    <span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span>
-                    <span><b>Warriors</b> (High Kills, High Deads)</span>
-                </div>
-                <div class="flex items-center">
-                    <span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span>
-                    <span><b>Feeders</b> (Low Kills, High Deads)</span>
-                </div>
-                <div class="flex items-center">
-                    <span class="w-4 h-4 rounded-full bg-gray-500 mr-2"></span>
-                    <span><b>Slackers</b> (Low Kills, Low Deads)</span>
-                </div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-blue-500 mr-2"></span><span>Heroes</span></div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span><span>Warriors</span></div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span><span>Feeders</span></div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-gray-500 mr-2"></span><span>Slackers</span></div>
             </div>
             <div class="chart-container">
                 <canvas id="scatter-chart"></canvas>
@@ -187,7 +166,7 @@
             </div>
         </div>
 
-        <!-- Kingdom Compare Tab -->
+        <!-- NEW: Kingdom Compare Tab -->
         <div id="content-kd-compare" class="tab-content">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">Compare Kingdom Profiles</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border">
@@ -218,7 +197,9 @@
 
     </div>
 
-    <!-- Link to our new JS file. 'defer' tells the browser to wait until the page is loaded -->
-    <script src="app_v2.js" defer></script>
+    <!-- Link to our NEW split JS files -->
+    <script src="app_v2.1.js" defer></script>
+    <script src="app_v2.2.js" defer></script>
+    <script src="app_v2.3.js" defer></script>
 </body>
 </html>
