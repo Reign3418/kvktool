@@ -66,16 +66,6 @@ body {
     text-transform: uppercase;
 }
 
-.compare-checkbox {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 1.5rem;
-    height: 1.5rem;
-    accent-color: #1e3a8a; /* blue-900 */
-    display: block; 
-}
-
 .tab-btn {
     padding: 0.75rem 1.5rem;
     font-weight: 600;
@@ -135,15 +125,6 @@ body {
 .snapshot-table td:first-child {
     font-weight: 600;
     color: #334155; /* slate-700 */
-}
-.snapshot-table .compare-checkbox-cell {
-    width: 40px;
-    text-align: center;
-}
-.snapshot-table .compare-checkbox {
-    width: 1.25rem;
-    height: 1.25rem;
-    display: block; 
 }
 
 /* Heatmap Colors */
