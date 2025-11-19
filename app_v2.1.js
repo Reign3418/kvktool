@@ -4,15 +4,13 @@
  */
 
 // --- App State ---
-let calculatedPlayerData = []; // Processed data for the *currently loaded* profile
+let calculatedPlayerData = [];
 let fighterData = [];
-// Removed selectedPlayers as per simplification
 let currentSort = { column: 'numeric_dkp_percent', direction: 'desc' };
-let dkpProfiles = {}; // Object to hold all saved profiles
-let currentProfileName = null; // The name of the profile currently loaded
+let dkpProfiles = {}; 
+let currentProfileName = null; 
 
 // --- DOM Element Refs ---
-// We use a global 'dom' object so other scripts can access these
 window.dom = {
     loadStatus: document.getElementById('load-status'),
     runDkpBtn: document.getElementById('run-dkp-btn'),
@@ -20,8 +18,6 @@ window.dom = {
     deleteProfileBtn: document.getElementById('delete-profile-btn'),
     profileSelect: document.getElementById('profile-select'),
     profileNameInput: document.getElementById('profile-name'),
-
-    // Scan Data File Inputs
     startScanInput: document.getElementById('start-scan-file'),
     endScanInput: document.getElementById('end-scan-file'),
 
@@ -31,8 +27,7 @@ window.dom = {
         snapshot: { btn: document.getElementById('btn-snapshot'), content: document.getElementById('content-snapshot') },
         playerCards: { btn: document.getElementById('btn-player-cards'), content: document.getElementById('content-player-cards') },
         fighters: { btn: document.getElementById('btn-fighters'), content: document.getElementById('content-fighters') },
-        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') },
-        kdCompare: { btn: document.getElementById('btn-kd-compare'), content: document.getElementById('content-kd-compare') }
+        chart: { btn: document.getElementById('btn-chart'), content: document.getElementById('content-chart') }
     },
 
     searchBars: {
@@ -41,7 +36,6 @@ window.dom = {
         fighters: document.getElementById('search-bar-fighters')
     },
 
-    // DKP Settings Inputs
     settingsInputs: {
         t4Mult: document.getElementById('setting-t4-mult'),
         t5Mult: document.getElementById('setting-t5-mult'),
@@ -53,18 +47,10 @@ window.dom = {
     fighterGrid: document.getElementById('fighter-grid'),
     snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
 
-    // Kingdom Compare DOM Refs
-    kdProfileSelectA: document.getElementById('kd-profile-select-a'),
-    kdProfileSelectB: document.getElementById('kd-profile-select-b'),
-    runKdCompareBtn: document.getElementById('run-kd-compare-btn'),
-    kdCompareResult: document.getElementById('kd-compare-result'),
-
-    // Chart Refs
     chartContainer: document.querySelector('.chart-container'),
     chartCanvas: document.getElementById('scatter-chart'),
     chartTooltip: document.getElementById('chart-tooltip')
 };
-
 
 // --- Utility Functions ---
 
@@ -108,14 +94,9 @@ function setStatus(message, isError = false) {
     }
 }
 
-// --- Data Parsing & File Reading ---
-
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
-        if (!file) {
-            reject(new Error("No file provided."));
-            return;
-        }
+        if (!file) { reject(new Error("No file provided.")); return; }
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(reader.error);
@@ -129,10 +110,9 @@ function parseCSV(data) {
         if (lines.length === 0) return null;
         if (lines[0].charCodeAt(0) === 0xFEFF) lines[0] = lines[0].substring(1);
 
-        // Basic cleaning of headers
         const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, '').replace(/\r/g, ''));
         
-        // DATA_MAP verification (Using the specific mapping we agreed on)
+        // UPDATED DATA MAP
         const DATA_MAP = {
             id: "Governor ID",
             name: "Governor Name",
