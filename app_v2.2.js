@@ -3,13 +3,10 @@
  * Part 2: Profile Management, DKP Calculation Logic
  */
 
-// --- Local Storage & Profile Management ---
-
 function loadProfilesFromStorage() {
     const profiles = localStorage.getItem('dkpProfiles');
     dkpProfiles = profiles ? JSON.parse(profiles) : {};
     updateProfileDropdown();
-    populateKdCompareDropdowns(); 
 }
 
 function saveProfilesToStorage() {
@@ -18,17 +15,13 @@ function saveProfilesToStorage() {
 
 function updateProfileDropdown() {
     dom.profileSelect.innerHTML = ''; 
-    
     const profileNames = Object.keys(dkpProfiles);
-
     if (profileNames.length === 0) {
         dom.profileSelect.innerHTML = '<option value="">-- No profiles found --</option>';
         return;
     }
-
     const blankOption = '<option value="">-- Select a profile --</option>';
     dom.profileSelect.innerHTML = blankOption;
-
     profileNames.forEach(name => {
         const option = document.createElement('option');
         option.value = name;
@@ -45,7 +38,6 @@ function handleLoadProfile() {
     }
 
     setStatus(`Loading profile: ${profileName}...`);
-    
     const profile = dkpProfiles[profileName];
     calculatedPlayerData = profile.calculatedData;
     
@@ -57,7 +49,6 @@ function handleLoadProfile() {
     
     processFighterData();
     renderAllTabs();
-    renderScatterChart();
     
     currentProfileName = profileName;
     dom.profileNameInput.value = profileName; 
@@ -72,14 +63,11 @@ function handleDeleteProfile() {
         setStatus("Please select a valid profile to delete.", true);
         return;
     }
-
     if (confirm(`Are you sure you want to delete the profile "${profileName}"? This cannot be undone.`)) {
         delete dkpProfiles[profileName];
         saveProfilesToStorage();
         updateProfileDropdown();
-        populateKdCompareDropdowns();
         setStatus(`Deleted profile: ${profileName}`);
-        
         if (currentProfileName === profileName) {
             clearAllData();
         }
@@ -96,21 +84,14 @@ function clearAllData() {
         bar.value = "";
     });
     renderAllTabs(); 
-    renderScatterChart();
     setStatus("Please create a new DKP profile or load an existing one.");
     activateTab('manageData');
 }
 
-// --- DKP Calculation ---
-
 async function runDkpCalculation() {
     setStatus("Calculating...");
-    
     const profileName = dom.profileNameInput.value.trim();
-    if (!profileName) {
-        setStatus("Error: Please enter a Profile Name.", true);
-        return;
-    }
+    if (!profileName) { setStatus("Error: Please enter a Profile Name.", true); return; }
     
     const startFile = dom.startScanInput.files[0];
     const endFile = dom.endScanInput.files[0];
@@ -119,8 +100,7 @@ async function runDkpCalculation() {
         if (dkpProfiles[profileName]) {
             setStatus("Re-calculating with new settings...");
         } else {
-            setStatus("Error: Please select both a Start Scan and End Scan file.", true);
-            return;
+            setStatus("Error: Please select both a Start Scan and End Scan file.", true); return;
         }
     }
 
@@ -133,21 +113,13 @@ async function runDkpCalculation() {
         };
         
         let startScanData, endScanData;
-        
         if (startFile && endFile) {
             const startScanText = await readFileAsText(startFile);
             const endScanText = await readFileAsText(endFile);
             startScanData = parseCSV(startScanText);
             endScanData = parseCSV(endScanText);
-            
             if (!startScanData || !endScanData) return; 
-
-            dkpProfiles[profileName] = {
-                ...dkpProfiles[profileName],
-                startScanRaw: startScanText,
-                endScanRaw: endScanText,
-            };
-
+            dkpProfiles[profileName] = { ...dkpProfiles[profileName], startScanRaw: startScanText, endScanRaw: endScanText, };
         } else if (dkpProfiles[profileName]) {
             startScanData = parseCSV(dkpProfiles[profileName].startScanRaw);
             endScanData = parseCSV(dkpProfiles[profileName].endScanRaw);
@@ -156,44 +128,31 @@ async function runDkpCalculation() {
         }
         
         const endScanMap = new Map();
-        endScanData.forEach(player => {
-            endScanMap.set(player['Governor ID'], player);
-        });
+        endScanData.forEach(player => { endScanMap.set(player['Governor ID'], player); });
         
         calculateAllPlayerData(startScanData, endScanMap, currentSettings);
         
-        dkpProfiles[profileName] = {
-            ...dkpProfiles[profileName],
-            calculatedData: calculatedPlayerData,
-            dkpSettings: currentSettings
-        };
+        dkpProfiles[profileName] = { ...dkpProfiles[profileName], calculatedData: calculatedPlayerData, dkpSettings: currentSettings };
         saveProfilesToStorage();
         
         currentProfileName = profileName;
         updateProfileDropdown();
-        populateKdCompareDropdowns(); 
         dom.profileSelect.value = profileName; 
-        
         processFighterData();
         renderAllTabs();
-        renderScatterChart();
         Object.values(dom.searchBars).forEach(bar => bar.disabled = false);
-
         setStatus(`Successfully saved and calculated DKP for ${profileName}.`);
         activateTab('snapshot'); 
-
     } catch (err) {
         console.error("Error during DKP calculation:", err);
         setStatus(`Error: ${err.message}`, true);
     }
 }
 
-
 function calculateAllPlayerData(startData, endMap, settings) {
     calculatedPlayerData = startData.map(startPlayer => {
         const govId = startPlayer['Governor ID'];
         const endPlayer = endMap.get(govId);
-
         const startPower = cleanNumber(startPlayer['Power']);
         let endPower = 0, endTroopPower = 0;
         let endT1=0, endT2=0, endT3=0, endT4=0, endT5=0, endDeads=0;
