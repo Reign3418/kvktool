@@ -37,6 +37,7 @@ function renderSnapshotTable() {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     const headers = [
+        { text: '', sort: null, class: 'compare-checkbox-cell' },
         { text: 'Name', sort: 'Governor Name', class: '' },
         { text: 'KvK KP', sort: 'numeric_kvk_kp', class: '' },
         { text: 'T4/T5 Kills', sort: 'numeric_t4t5', class: '' },
@@ -66,6 +67,18 @@ function renderSnapshotTable() {
         const govId = player['Governor ID'];
         tr.dataset.id = govId;
         tr.dataset.name = player['Governor Name'].toLowerCase();
+
+        const tdCheck = document.createElement('td');
+        tdCheck.className = 'compare-checkbox-cell';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'compare-checkbox';
+        checkbox.dataset.id = govId;
+        checkbox.title = 'Select to Compare';
+        checkbox.addEventListener('change', handleCheck);
+        checkbox.checked = selectedPlayers.includes(govId);
+        tdCheck.appendChild(checkbox);
+        tr.appendChild(tdCheck);
 
         const tdName = document.createElement('td');
         tdName.textContent = player['Governor Name'];
@@ -116,6 +129,7 @@ function renderPlayerCards() {
         const govName = player['Governor Name'];
         const kvkKP = player.numeric_kvk_kp;
         const dkpPercent = player['DKP % Complete'];
+        const isChecked = selectedPlayers.includes(govId);
 
         const card = document.createElement('div');
         card.className = 'player-card';
@@ -123,6 +137,7 @@ function renderPlayerCards() {
         card.dataset.name = govName.toLowerCase();
 
         card.innerHTML = `
+            <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
             <h3 class="player-name" title="${govName}">${govName}</h3>
             <p class="player-id">${govId}</p>
             <div class="grid grid-cols-2 gap-2 mt-4">
@@ -136,6 +151,7 @@ function renderPlayerCards() {
                 </div>
             </div>
         `;
+        card.querySelector('.compare-checkbox').addEventListener('change', handleCheck);
         fragment.appendChild(card);
     });
     dom.playerGrid.appendChild(fragment);
@@ -155,6 +171,7 @@ function renderFighterCards() {
         const kvkKP = player.numeric_kvk_kp;
         const dkpPercent = player['DKP % Complete'];
         const power = player.numeric_power;
+        const isChecked = selectedPlayers.includes(govId);
 
         const card = document.createElement('div');
         card.className = 'player-card';
@@ -162,6 +179,7 @@ function renderFighterCards() {
         card.dataset.name = govName.toLowerCase();
         
         card.innerHTML = `
+            <input type="checkbox" class="compare-checkbox" data-id="${govId}" ${isChecked ? 'checked' : ''} title="Select to Compare">
             <span class="absolute top-2 left-2 text-xl font-bold text-gray-400">#${index + 1}</span>
             <h3 class="player-name" title="${govName}">${govName}</h3>
             <p class="player-id">${govId}</p>
@@ -180,6 +198,7 @@ function renderFighterCards() {
                 </div>
             </div>
         `;
+        card.querySelector('.compare-checkbox').addEventListener('change', handleCheck);
         fragment.appendChild(card);
     });
     dom.fighterGrid.appendChild(fragment);
@@ -409,6 +428,97 @@ function filterViews(query, sourceTab) {
         }
     });
 }
+
+// --- Comparison Functionality ---
+
+function handleCheck(e) {
+    const id = e.target.dataset.id;
+    if (e.target.checked) {
+        if (selectedPlayers.length < 3) selectedPlayers.push(id);
+        else e.target.checked = false;
+    } else {
+        selectedPlayers = selectedPlayers.filter(pId => pId !== id);
+    }
+    updateCompareState();
+}
+
+function updateCompareState() {
+    dom.compareBtn.textContent = `Compare (${selectedPlayers.length})`;
+    const allCheckboxes = document.querySelectorAll('.compare-checkbox');
+    allCheckboxes.forEach(box => {
+        box.checked = selectedPlayers.includes(box.dataset.id);
+        box.disabled = (selectedPlayers.length >= 3 && !box.checked);
+    });
+    renderComparison();
+}
+
+dom.clearBtn.addEventListener('click', () => {
+    selectedPlayers = [];
+    document.querySelectorAll('.compare-checkbox').forEach(box => {
+        box.checked = false;
+        box.disabled = false;
+    });
+    updateCompareState();
+});
+
+function renderComparison() {
+    if (selectedPlayers.length === 0) {
+        dom.compareWrapper.innerHTML = '<p class="text-gray-500 text-center p-8">Select players to compare.</p>';
+        return;
+    }
+
+    const playersToCompare = calculatedPlayerData.filter(p => selectedPlayers.includes(p['Governor ID']));
+    
+    const metrics = [
+        ['Start Power', 'startPower', true, 'short'],
+        ['Power +/-', 'powerChange', true, 'number'],
+        ['Troop Power +/-', 'troopPowerChange', true, 'number'],
+        ['KvK Deads', 'deads', false, 'number'],
+        ['KvK KP (Formula)', 'calcKP', true, 'short'],
+        ['T4+T5 Kills', 't4t5Kills', true, 'short'],
+        ['T1-T3 Kills', (p) => p.t1kills + p.t2kills + p.t3kills, true, 'short'],
+        ['DKP % Complete', 'dkpPercent', true, 'percent'],
+        ['Total DKP', 'dkp', true, 'short'],
+        ['Target DKP', 'targetDKP', true, 'short']
+    ];
+
+    let tableHTML = '<table class="compare-table"><thead><tr><th>Metric</th>';
+    playersToCompare.forEach(p => { tableHTML += `<th>${p['Governor Name']}</th>`; });
+    for (let i = 0; i < 3 - playersToCompare.length; i++) tableHTML += '<th>-</th>';
+    tableHTML += '</tr></thead><tbody>';
+
+    metrics.forEach(([label, key, higherIsBetter, format]) => {
+        let row = `<tr><td>${label}</td>`;
+        let values = [];
+        playersToCompare.forEach(p => {
+            const val = (typeof key === 'function') ? key(p) : p[key];
+            let formatted;
+            if (format === 'short') formatted = formatShort(val);
+            else if (format === 'percent') formatted = `${val}%`;
+            else formatted = formatNumber(val);
+            values.push({ val, formatted });
+        });
+
+        const numericVals = values.map(v => v.val);
+        const targetVal = higherIsBetter ? Math.max(...numericVals) : Math.min(...numericVals);
+        const worstVal = higherIsBetter ? Math.min(...numericVals) : Math.max(...numericVals);
+
+        values.forEach(v => {
+            let cellClass = '';
+            if (v.val === targetVal) cellClass = 'stat-winner';
+            else if (v.val === worstVal && values.length > 1 && targetVal !== worstVal) cellClass = 'stat-loser';
+            row += `<td class="${cellClass}">${v.formatted}</td>`;
+        });
+        
+        for (let i = 0; i < 3 - playersToCompare.length; i++) row += '<td>-</td>';
+        row += '</tr>';
+        tableHTML += row;
+    });
+
+    tableHTML += '</tbody></table>';
+    dom.compareWrapper.innerHTML = tableHTML;
+}
+
 
 // --- App Entry Point ---
 function handleResize() {
