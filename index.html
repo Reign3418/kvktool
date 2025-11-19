@@ -7,10 +7,9 @@
     <!-- External Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <!-- FONT CHANGE: Swapped Inter for Roboto -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
     
-    <!-- Link to our new CSS file -->
+    <!-- Link to our CSS file -->
     <link rel="stylesheet" href="styles_v2.css">
 </head>
 <body class="p-4 sm:p-8">
@@ -34,15 +33,13 @@
             <button id="btn-snapshot" class="tab-btn">Snapshot</button>
             <button id="btn-player-cards" class="tab-btn">Player Cards</button>
             <button id="btn-fighters" class="tab-btn">Fighters</button>
-            <!-- REMOVED COMPARE TAB BUTTON -->
             <button id="btn-chart" class="tab-btn">Chart</button>
-            <!-- NEW TAB -->
-            <button id="btn-kd-compare" class="tab-btn">Kd Compare</button>
         </div>
 
         <!-- Manage Data Tab -->
         <div id="content-manage-data" class="tab-content active">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
                 <!-- Create New Profile -->
                 <div class="bg-gray-50 p-6 rounded-lg border">
                     <h2 class="text-2xl font-bold text-gray-800 mb-4">Create New DKP Profile</h2>
@@ -150,8 +147,6 @@
             </div>
         </div>
 
-        <!-- REMOVED Compare Tab Content -->
-
         <!-- Chart Tab -->
         <div id="content-chart" class="tab-content">
             <div class="flex flex-wrap justify-center gap-4 mb-4">
@@ -166,38 +161,9 @@
             </div>
         </div>
 
-        <!-- NEW: Kingdom Compare Tab -->
-        <div id="content-kd-compare" class="tab-content">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Compare Kingdom Profiles</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border">
-                <div>
-                    <label for="kd-profile-select-a" class="block text-sm font-medium text-gray-700">Select Profile A</label>
-                    <select id="kd-profile-select-a" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
-                        <option value="">-- Select Profile --</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="kd-profile-select-b" class="block text-sm font-medium text-gray-700">Select Profile B</label>
-                    <select id="kd-profile-select-b" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
-                        <option value="">-- Select Profile --</option>
-                    </select>
-                </div>
-                <div class="md:self-end">
-                    <button id="run-kd-compare-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors text-lg shadow-lg">
-                        Compare
-                    </button>
-                </div>
-            </div>
-
-            <!-- Result area for the baseball card -->
-            <div id="kd-compare-result" class="mt-6">
-                <p class="text-gray-500 text-center p-8">Select two profiles and click "Compare" to see the results.</p>
-            </div>
-        </div>
-
     </div>
 
-    <!-- Link to our NEW split JS files -->
+    <!-- Link to our split JS files -->
     <script src="app_v2.1.js" defer></script>
     <script src="app_v2.2.js" defer></script>
     <script src="app_v2.3.js" defer></script>
