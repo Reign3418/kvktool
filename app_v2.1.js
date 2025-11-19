@@ -6,6 +6,7 @@
 // --- App State ---
 let calculatedPlayerData = [];
 let fighterData = [];
+let selectedPlayers = []; // Kept for potential future use but not used in UI
 let currentSort = { column: 'numeric_dkp_percent', direction: 'desc' };
 let dkpProfiles = {}; 
 let currentProfileName = null; 
@@ -47,6 +48,7 @@ window.dom = {
     fighterGrid: document.getElementById('fighter-grid'),
     snapshotTableWrapper: document.getElementById('snapshot-table-wrapper'),
 
+    // Removed compare elements
     chartContainer: document.querySelector('.chart-container'),
     chartCanvas: document.getElementById('scatter-chart'),
     chartTooltip: document.getElementById('chart-tooltip')
@@ -112,7 +114,7 @@ function parseCSV(data) {
 
         const headers = lines.shift().split(',').map(h => h.trim().replace(/"/g, '').replace(/\r/g, ''));
         
-        // UPDATED DATA MAP
+        // UPDATED DATA MAP with correct headers
         const DATA_MAP = {
             id: "Governor ID",
             name: "Governor Name",
