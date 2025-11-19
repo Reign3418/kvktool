@@ -1,12 +1,13 @@
 /**
  * UNITY - KvK DKP Calculator
- * Part 3: Rendering Functions, Chart Logic, Search, and Initialization
+ * Part 3: Rendering, Chart Logic, Search, and Initialization
  */
 
 function renderAllTabs() {
     renderSnapshotTable();
     renderPlayerCards();
     renderFighterCards();
+    // Chart renders on demand
 }
 
 function renderSnapshotTable() {
@@ -349,7 +350,6 @@ function setupChartInteractions(plotData, xScale, yScale, canvas, margin) {
     });
 }
 
-
 // --- Search & Sort ---
 
 function handleSort(e) {
@@ -410,146 +410,6 @@ function filterViews(query, sourceTab) {
     });
 }
 
-
-// --- Kingdom Compare Logic ---
-function populateKdCompareDropdowns() {
-    const profiles = getSavedProfiles();
-    const profileNames = Object.keys(profiles);
-    
-    if (profileNames.length === 0) {
-        dom.kdProfileSelectA.innerHTML = '<option value="">-- No profiles --</option>';
-        dom.kdProfileSelectB.innerHTML = '<option value="">-- No profiles --</option>';
-        return;
-    }
-
-    // Sort names alphabetically
-    profileNames.sort((a, b) => a.localeCompare(b));
-    const options = profileNames.map(name => `<option value="${name}">${name}</option>`).join('');
-    dom.kdProfileSelectA.innerHTML = `<option value="">-- Select Profile A --</option>${options}`;
-    dom.kdProfileSelectB.innerHTML = `<option value="">-- Select Profile B --</option>${options}`;
-}
-
-function runKdCompare() {
-    const profileNameA = dom.kdProfileSelectA.value;
-    const profileNameB = dom.kdProfileSelectB.value;
-
-    if (!profileNameA || !profileNameB) {
-        dom.kdCompareResult.innerHTML = '<p class="text-gray-500 text-center p-8">Please select two profiles to compare.</p>';
-        return;
-    }
-
-    const profileA = loadProfile(profileNameA);
-    const profileB = loadProfile(profileNameB);
-
-    if (!profileA || !profileB) {
-        setStatus("Error: Could not load one or more profiles.", true);
-        return;
-    }
-
-    // Calculate summary stats for each profile
-    const summaryA = calculateProfileSummary(profileA.data);
-    const summaryB = calculateProfileSummary(profileB.data);
-
-    // Render the "Baseball Card"
-    renderKdCompareCard(profileNameA, summaryA, profileNameB, summaryB);
-}
-
-function calculateProfileSummary(playerData) {
-    const summary = {
-        governors: playerData.length,
-        totalStartPower: 0,
-        totalPowerChange: 0,
-        totalTroopPowerChange: 0,
-        totalT4Kills: 0,
-        totalT5Kills: 0,
-        totalT4T5Kills: 0,
-        totalDeads: 0,
-        totalCalcKP: 0,
-        avgDKPPercent: 0
-    };
-
-    playerData.forEach(p => {
-        summary.totalStartPower += p.startPower;
-        summary.totalPowerChange += p.powerChange;
-        summary.totalTroopPowerChange += p.troopPowerChange;
-        summary.totalT4Kills += p.t4kills;
-        summary.totalT5Kills += p.t5kills;
-        summary.totalT4T5Kills += p.t4t5Kills;
-        summary.totalDeads += p.deads;
-        summary.totalCalcKP += p.calcKP;
-    });
-
-    summary.avgDKPPercent = d3.mean(playerData, d => d.dkpPercent) || 0;
-    
-    return summary;
-}
-
-function renderKdCompareCard(nameA, statsA, nameB, statsB) {
-    const metrics = [
-        { title: '# Governors', key: 'governors', higherIsBetter: true, format: 'number' },
-        { title: 'Starting Power', key: 'totalStartPower', higherIsBetter: true, format: 'short' },
-        { title: 'Power +/-', key: 'totalPowerChange', higherIsBetter: true, format: 'short' },
-        { title: 'Troop Power +/-', key: 'totalTroopPowerChange', higherIsBetter: true, format: 'short' },
-        { title: 'Total KvK KP', key: 'totalCalcKP', higherIsBetter: true, format: 'short' },
-        { title: 'Total T4 Kills', key: 'totalT4Kills', higherIsBetter: true, format: 'short' },
-        { title: 'Total T5 Kills', key: 'totalT5Kills', higherIsBetter: true, format: 'short' },
-        { title: 'Total Kills', key: 'totalT4T5Kills', higherIsBetter: true, format: 'short' },
-        { title: 'Total Deads', key: 'totalDeads', higherIsBetter: false, format: 'number' },
-        { title: 'Avg. DKP %', key: 'avgDKPPercent', higherIsBetter: true, format: 'percent' }
-    ];
-
-    let statsGridHTML = '';
-    metrics.forEach(metric => {
-        const valA = statsA[metric.key];
-        const valB = statsB[metric.key];
-        
-        let classA = '', classB = '';
-        if (valA > valB) {
-            classA = metric.higherIsBetter ? 'kd-winner' : 'kd-loser';
-            classB = metric.higherIsBetter ? 'kd-loser' : 'kd-winner';
-        } else if (valB > valA) {
-            classB = metric.higherIsBetter ? 'kd-winner' : 'kd-loser';
-            classA = metric.higherIsBetter ? 'kd-loser' : 'kd-winner';
-        }
-
-        const formatVal = (val) => {
-            if (metric.format === 'short') return formatShort(val);
-            if (metric.format === 'percent') return `${val.toFixed(1)}%`;
-            return formatNumber(val);
-        };
-
-        statsGridHTML += `
-            <div class="kd-stat-row">
-                <span class="kd-stat-value ${classA}">${formatVal(valA)}</span>
-                <span class="kd-stat-title">${metric.title}</span>
-                <span class="kd-stat-value ${classB}">${formatVal(valB)}</span>
-            </div>
-        `;
-    });
-
-    const cardHTML = `
-        <div class="kd-card-container">
-            <header class="kd-header text-center">
-                <h1 class="kd-title">Kingdom Performance</h1>
-                <h2 class="kd-subtitle">Head-to-Head Comparison</h2>
-            </header>
-            <div class="kd-body">
-                <div class="kd-profile-headers">
-                    <div class="kd-profile-a"><span class="kd-profile-name">${nameA}</span></div>
-                    <div class="kd-vs-circle">VS</div>
-                    <div class="kd-profile-b"><span class="kd-profile-name">${nameB}</span></div>
-                </div>
-                <div class="kd-stats-grid">
-                    ${statsGridHTML}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    dom.kdCompareResult.innerHTML = cardHTML;
-}
-
-
 // --- App Entry Point ---
 function handleResize() {
     if (dom.tabs.chart.content.classList.contains('active')) {
@@ -568,13 +428,13 @@ function activateTab(tabName) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    if (!dom.runDKPBtn) return;
+    if (!dom.runDkpBtn) return;
     
     setupSearch();
-    dom.runDKPBtn.addEventListener('click', runDkpCalculation);
+    dom.runDkpBtn.addEventListener('click', runDkpCalculation);
     dom.loadProfileBtn.addEventListener('click', handleLoadProfile);
     dom.deleteProfileBtn.addEventListener('click', handleDeleteProfile);
-    dom.runKdCompareBtn.addEventListener('click', runKdCompare);
+    // Removed runKdCompareBtn listener
     window.addEventListener('resize', debounce(handleResize, 250));
 
     Object.keys(dom.tabs).forEach(key => {
@@ -585,7 +445,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     loadProfilesFromStorage();
     populateProfileDropdown();
-    populateKdCompareDropdowns(); 
     activateTab('manageData');
     setStatus("Welcome to UNITY. Please create a new profile or load an existing one.");
 });
